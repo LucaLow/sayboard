@@ -30,7 +30,7 @@ export async function checkTeacherOnboarding({
   const invited = "invited_" + engine;
   const newPassword = "Synthetic invitation password " + engine;
   const signIn = async (target, user, secret) => {
-    await target.goto(origin + "/teacher.html");
+    await target.goto(origin + "/teacher");
     await target.getByLabel("Teacher username", { exact: true }).fill(user);
     await target.getByLabel("Password", { exact: true }).fill(secret);
     await target.getByRole("button", { name: "Sign in", exact: true }).click();
@@ -50,8 +50,13 @@ export async function checkTeacherOnboarding({
     const link = await page
       .getByLabel("Private invitation link", { exact: true })
       .inputValue();
+    assert.equal(new URL(link).pathname, "/teacher");
     assert.match(new URL(link).hash, /^#activate=[a-f0-9]{64}$/);
-    await join.goto(link);
+    // Previously emailed links must still open the same activation flow.
+    const legacyLink = new URL(link);
+    legacyLink.pathname = "/teacher.html";
+    await join.goto(legacyLink.href);
+    assert.equal(new URL(join.url()).pathname, "/teacher");
     await join
       .getByRole("heading", { name: "Welcome to Sayboard", exact: true })
       .waitFor();
@@ -164,8 +169,14 @@ export async function checkTeacherOnboarding({
   } catch (error) {
     if (artifactDirectory) {
       await mkdir(artifactDirectory, { recursive: true });
-      await page.screenshot({ path: artifactDirectory + `/organiser-failure-${engine}.png`, fullPage: true });
-      await writeFile(artifactDirectory + `/organiser-failure-${engine}.txt`, await page.locator("body").innerText());
+      await page.screenshot({
+        path: artifactDirectory + `/organiser-failure-${engine}.png`,
+        fullPage: true,
+      });
+      await writeFile(
+        artifactDirectory + `/organiser-failure-${engine}.txt`,
+        await page.locator("body").innerText(),
+      );
     }
     throw error;
   } finally {
