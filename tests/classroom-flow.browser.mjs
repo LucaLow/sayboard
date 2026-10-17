@@ -28,27 +28,35 @@ export async function checkClassroomFlow({
   await device.addInitScript(() => {
     window.__holdClassroomSpeech = false;
     window.__classroomUtterance = null;
-    window.SpeechSynthesisUtterance = class {
-      constructor(text) {
-        this.text = text;
-      }
-    };
-    speechSynthesis.getVoices = () => [
-      {
-        name: "Synthetic local voice",
-        voiceURI: "synthetic-local",
-        localService: true,
-        lang: "en-AU",
+    Object.defineProperty(window, "SpeechSynthesisUtterance", {
+      value: class {
+        constructor(text) {
+          this.text = text;
+        }
       },
-    ];
-    speechSynthesis.speak = (utterance) => {
-      utterance.onstart?.();
-      if (window.__holdClassroomSpeech) window.__classroomUtterance = utterance;
-      else utterance.onend?.();
-    };
-    speechSynthesis.cancel = () => {
-      window.__classroomUtterance = null;
-    };
+    });
+    Object.defineProperty(window, "speechSynthesis", {
+      value: {
+        getVoices: () => [
+          {
+            name: "Synthetic local voice",
+            voiceURI: "synthetic-local",
+            localService: true,
+            lang: "en-AU",
+          },
+        ],
+        addEventListener: () => {},
+        speak: (utterance) => {
+          utterance.onstart?.();
+          if (window.__holdClassroomSpeech)
+            window.__classroomUtterance = utterance;
+          else utterance.onend?.();
+        },
+        cancel: () => {
+          window.__classroomUtterance = null;
+        },
+      },
+    });
   });
   const errors = [];
   const page = await teacher.newPage();
