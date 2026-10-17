@@ -12,7 +12,7 @@ The pilot runs the complete app, authentication, dashboard and SQLite database o
 6. On the intended device, open the same classroom hostname. Enter caregiver controls, choose **Edit board and settings**, expand **Backup and transfer**, and enter the pairing code under classroom connection.
 7. Linking does not replace the local board. Choose **Load published board**, review the draft, then **Save board** to apply it.
 
-Updates follow the same deliberate load and save steps. The board does not rearrange itself while someone is communicating. On a later visit, **Check classroom connection** restores the connection panel from the device's secure cookie.
+Updates follow the same deliberate load and save steps. **Load published board** fetches the latest publication even when the connection panel was opened before the teacher published again. If the version changes during confirmation, loading stops and asks the caregiver to review the new version. The board does not rearrange itself while someone is communicating. On a later visit, **Check classroom connection** restores the connection panel from the device's secure cookie.
 
 ## Recover or remove access
 

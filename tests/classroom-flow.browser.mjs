@@ -53,13 +53,37 @@ export async function checkClassroomFlow({
           exact: true,
         })
         .click();
+    const downloadPending = Promise.withResolvers();
+    const releaseDownload = Promise.withResolvers();
+    let publicationReads = 0;
+    await device.route("**/api/device/board", async (route) => {
+      publicationReads++;
+      if (publicationReads === 2) {
+        downloadPending.resolve();
+        await releaseDownload.promise;
+      }
+      await route.continue();
+    });
     await tablet
       .getByRole("button", { name: "Load published board", exact: true })
       .click();
     await confirm(tablet);
+    await downloadPending.promise;
+    try {
+      assert.equal(
+        await tablet
+          .getByRole("button", { name: "Save board", exact: true })
+          .isEnabled(),
+        false,
+        "Saving must wait for the publication download to finish",
+      );
+    } finally {
+      releaseDownload.resolve();
+    }
     await tablet
       .getByRole("button", { name: "Save board", exact: true })
       .click();
+    await device.unroute("**/api/device/board");
   };
   try {
     await page.goto(origin + "/teacher.html");
@@ -225,22 +249,46 @@ export async function checkClassroomFlow({
       .waitFor();
     const denied = await device.request.get(origin + "/api/classrooms");
     assert.equal(denied.status(), 401);
+    // Keep the learner panel open with version 1 while the teacher publishes.
+    // Loading must fetch the latest board, without a separate connection check.
+    await editDevice();
+    await tablet
+      .getByRole("button", { name: "Check classroom connection", exact: true })
+      .click();
+    await tablet
+      .getByText("Linked to Demo learner. Published version 1 is available.", {
+        exact: true,
+      })
+      .waitFor();
+    const beforeUpdate = await tablet.evaluate(() =>
+      localStorage.getItem("sayboard-v2"),
+    );
     await changeDraft("Published one", "Published two");
     await publish();
     await page
       .getByRole("heading", { name: "Version 2", exact: true })
       .waitFor();
-    await tablet
-      .getByRole("button", { name: "Say Published one", exact: true })
-      .waitFor();
     assert.equal(
-      await tablet
-        .getByRole("button", { name: "Say Published two", exact: true })
-        .count(),
-      0,
-      "Publishing must not rearrange a communicating device",
+      await tablet.evaluate(() => localStorage.getItem("sayboard-v2")),
+      beforeUpdate,
+      "Publishing must not replace the working board or caregiver draft",
     );
-    await applyPublication(true);
+    await tablet
+      .getByRole("button", { name: "Edit Published one", exact: true })
+      .waitFor();
+    await tablet
+      .getByRole("button", { name: "Load published board", exact: true })
+      .click();
+    await tablet
+      .getByText(
+        "Load version 2 into this caregiver draft? This replaces this draft. Save board applies it on this device.",
+        { exact: true },
+      )
+      .waitFor();
+    await confirm(tablet);
+    await tablet
+      .getByRole("button", { name: "Save board", exact: true })
+      .click();
     await tablet
       .getByRole("button", { name: "Say Published two", exact: true })
       .waitFor();
@@ -265,6 +313,81 @@ export async function checkClassroomFlow({
     await tablet
       .getByRole("button", { name: "Say Published one", exact: true })
       .waitFor();
+    await editDevice();
+    await tablet
+      .getByRole("button", { name: "Check classroom connection", exact: true })
+      .click();
+    await tablet
+      .getByText("Linked to Demo learner. Published version 3 is available.", {
+        exact: true,
+      })
+      .waitFor();
+    const beforeInterruptedLoad = await tablet.evaluate(() =>
+      localStorage.getItem("sayboard-v2"),
+    );
+    await device.setOffline(true);
+    await tablet
+      .getByRole("button", { name: "Load published board", exact: true })
+      .click();
+    await tablet
+      .getByText(
+        "The classroom service could not be reached. Your device board is unchanged. Try again when connected.",
+        { exact: true },
+      )
+      .waitFor();
+    assert.equal(
+      await tablet.evaluate(() => localStorage.getItem("sayboard-v2")),
+      beforeInterruptedLoad,
+    );
+    await device.setOffline(false);
+    await tablet
+      .getByRole("button", { name: "Load published board", exact: true })
+      .click();
+    await tablet
+      .getByText(
+        "Load version 3 into this caregiver draft? This replaces this draft. Save board applies it on this device.",
+        { exact: true },
+      )
+      .waitFor();
+    // A publication arriving during the confirmation must not load silently.
+    await changeDraft("Published one", "Published three");
+    await publish();
+    await page
+      .getByRole("heading", { name: "Version 4", exact: true })
+      .waitFor();
+    await confirm(tablet);
+    await tablet
+      .getByText(
+        "The published version changed while you were confirming. Your draft is unchanged. Choose Load published board again to review the latest version.",
+        { exact: true },
+      )
+      .waitFor();
+    assert.equal(
+      await tablet.evaluate(() => localStorage.getItem("sayboard-v2")),
+      beforeInterruptedLoad,
+    );
+    await tablet
+      .getByRole("button", { name: "Load published board", exact: true })
+      .click();
+    await tablet
+      .getByText(
+        "Load version 4 into this caregiver draft? This replaces this draft. Save board applies it on this device.",
+        { exact: true },
+      )
+      .waitFor();
+    await confirm(tablet);
+    await tablet
+      .getByRole("button", { name: "Save board", exact: true })
+      .click();
+    await editDevice();
+    await tablet
+      .getByRole("button", { name: "Check classroom connection", exact: true })
+      .click();
+    await tablet
+      .getByText("Linked to Demo learner. Published version 4 is available.", {
+        exact: true,
+      })
+      .waitFor();
     await page
       .getByRole("button", { name: "Refresh saved draft", exact: true })
       .click();
@@ -273,9 +396,8 @@ export async function checkClassroomFlow({
       .click();
     await confirm(page);
     await page.getByText("Device access revoked.", { exact: true }).waitFor();
-    await editDevice();
     await tablet
-      .getByRole("button", { name: "Check classroom connection", exact: true })
+      .getByRole("button", { name: "Load published board", exact: true })
       .click();
     await tablet
       .getByText(
@@ -287,16 +409,16 @@ export async function checkClassroomFlow({
       .getByRole("button", { name: "Back to board", exact: true })
       .click();
     await tablet
-      .getByRole("button", { name: "Say Published one", exact: true })
+      .getByRole("button", { name: "Say Published three", exact: true })
       .waitFor();
     await tablet.reload();
     await tablet
-      .getByRole("button", { name: "Say Published one", exact: true })
+      .getByRole("button", { name: "Say Published three", exact: true })
       .waitFor();
     await device.setOffline(true);
     assert.ok(
       await tablet
-        .getByRole("button", { name: "Say Published one", exact: true })
+        .getByRole("button", { name: "Say Published three", exact: true })
         .isVisible(),
     );
     await page
@@ -325,6 +447,11 @@ export async function checkClassroomFlow({
       actualBoardPreview: true,
       explicitPublicationAndDeviceApply: true,
       publishedBoardSurvivesReload: true,
+      latestPublicationWithoutManualRefresh: true,
+      saveWaitsForPublicationDownload: true,
+      publicationChangedDuringConfirmationRejected: true,
+      offlineLoadPreservesWorkingBoard: true,
+      revokedDeviceCannotLoadCachedPublication: true,
       rollback: true,
       deviceCannotAccessTeacherData: true,
       revocationKeepsLocalBoard: true,

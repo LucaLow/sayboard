@@ -33,6 +33,10 @@
       "manifestSha256": "4d287bcdd7c264c15548abd88f6ba162029804dde391520c4287c7ecdf79ce2a"
     },
     {
+      "release": "f701a168b3a7c1e6f957882d95b67464712c3cf78401cb07412b3dda6fb11a8f",
+      "manifestSha256": "89aec9f0ff07a5f7793ac8548daeef1313d4299ccdd9210a90123968fe270b57"
+    },
+    {
       "release": "fff12dac32e6d180e042637fcd9e3f5b39ec990790d4d346de37bfa07aabb4e2",
       "manifestSha256": "67a395cf755d9e0373aa6f5892f9bbe83ab030f509bd4789cf80c552548fac63"
     }
