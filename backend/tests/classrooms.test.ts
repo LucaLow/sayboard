@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { SqliteStore } from "../store.ts";
 import { createApi } from "../api.ts";
-import { DEVICE_MS, PAIRING_MS } from "../classroom-store.ts";
+import { DEVICE_MS, PAIRING_MS, SqliteClassrooms } from "../classroom-store.ts";
 import { tokenHash } from "../password.ts";
 import { starterBoard } from "../../src/board.ts";
 import {
@@ -14,6 +14,7 @@ import {
   parseClassroom,
   parseProfileDetail,
   parseDeviceBoard,
+  parseDeviceSync,
 } from "../../src/classroom-contract.ts";
 
 const origin = "https://pilot.example.test";
@@ -359,6 +360,261 @@ describe("classroom ownership and publication", () => {
 });
 
 describe("scoped classroom devices", () => {
+  it("checks publication metadata without board content and reports only durable client receipts", async () => {
+    const { profile } = await fixture();
+    const device = await pair(await code(profile.id));
+    const lastSeenAt = clock;
+    const initial = await request("/api/device/sync", "GET", undefined, device);
+    expect(initial.headers.get("cache-control")).toBe("no-store");
+    expect(Object.keys(await initial.clone().json()).sort()).toEqual([
+      "csrfToken",
+      "label",
+      "profileId",
+      "version",
+    ]);
+    expect(parseDeviceSync(await initial.json()).version).toBe(0);
+    const current = async () =>
+      parseProfileDetail(
+        await (
+          await request(
+            `/api/profiles/${profile.id}`,
+            "GET",
+            undefined,
+            teacher,
+          )
+        ).json(),
+      );
+    expect((await current()).devices[0]).toMatchObject({
+      appliedVersion: null,
+      appliedAt: null,
+      lastSeenAt: clock,
+    });
+    await request(
+      `/api/profiles/${profile.id}/publish`,
+      "POST",
+      { revision: 1 },
+      teacher,
+    );
+    clock += 1000;
+    expect(
+      parseDeviceSync(
+        await (
+          await request("/api/device/sync", "GET", undefined, device)
+        ).json(),
+      ).version,
+    ).toBe(1);
+    // Downloading is not a receipt: storage/application must finish on the client first.
+    await request("/api/device/board", "GET", undefined, device);
+    expect((await current()).devices[0].appliedVersion).toBeNull();
+    expect(
+      (await request("/api/device/applied", "POST", { version: 1 }, device))
+        .status,
+    ).toBe(200);
+    const appliedAt = clock;
+    clock += 1000;
+    await request("/api/device/applied", "POST", { version: 1 }, device);
+    expect((await current()).devices[0]).toMatchObject({
+      appliedVersion: 1,
+      appliedAt,
+      lastSeenAt,
+    });
+    // Three-second polling must not produce a database write on every request.
+    clock = lastSeenAt + 9_999;
+    await request("/api/device/sync", "GET", undefined, device);
+    expect((await current()).devices[0].lastSeenAt).toBe(lastSeenAt);
+    clock = lastSeenAt + 10_000;
+    await request("/api/device/sync", "GET", undefined, device);
+    expect((await current()).devices[0]).toMatchObject({
+      appliedVersion: 1,
+      appliedAt,
+      lastSeenAt: clock,
+    });
+  });
+  it("rejects invalid receipts and isolates each device, profile and teacher", async () => {
+    const { profile } = await fixture();
+    const one = await pair(await code(profile.id));
+    const two = await pair(await code(profile.id));
+    for (const version of [0, 1, -1, 1.5, "1", null])
+      expect(
+        (await request("/api/device/applied", "POST", { version }, one)).status,
+      ).toBe(400);
+    await request(
+      `/api/profiles/${profile.id}/publish`,
+      "POST",
+      { revision: 1 },
+      teacher,
+    );
+    expect(
+      (
+        await request(
+          "/api/device/applied",
+          "POST",
+          { version: 1 },
+          { ...one, csrf: "" },
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request("/api/device/applied", "POST", { version: 1 }, one, {
+          origin: "https://foreign.example",
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (await request("/api/device/applied", "POST", { version: 1 }, teacher))
+        .status,
+    ).toBe(401);
+    expect(
+      (await request("/api/device/applied", "POST", { version: 2 }, one))
+        .status,
+    ).toBe(400);
+    expect(
+      (
+        await request(
+          "/api/device/applied?profile=other",
+          "POST",
+          { version: 1 },
+          one,
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (await request("/api/device/applied", "GET", undefined, one)).status,
+    ).toBe(405);
+    expect((await request("/api/device/sync", "POST", {}, one)).status).toBe(
+      405,
+    );
+    expect(
+      (await request("/api/device/applied", "POST", { version: 1 }, one))
+        .status,
+    ).toBe(200);
+    const devices = parseProfileDetail(
+      await (
+        await request(`/api/profiles/${profile.id}`, "GET", undefined, teacher)
+      ).json(),
+    ).devices;
+    expect(devices.map((d) => d.appliedVersion)).toEqual([1, null]);
+    expect(
+      parseDeviceSync(
+        await (await request("/api/device/sync", "GET", undefined, two)).json(),
+      ).profileId,
+    ).toBe(profile.id);
+  });
+  it("keeps receipt versions monotonic when delayed requests arrive after a newer publication", async () => {
+    const { profile } = await fixture();
+    const device = await pair(await code(profile.id));
+    await request(
+      `/api/profiles/${profile.id}/publish`,
+      "POST",
+      { revision: 1 },
+      teacher,
+    );
+    const changed = structuredClone(profile.board);
+    if (changed.tiles[0]) changed.tiles[0].label = "A newer publication";
+    await request(
+      `/api/profiles/${profile.id}`,
+      "PUT",
+      { revision: 1, board: changed },
+      teacher,
+    );
+    await request(
+      `/api/profiles/${profile.id}/publish`,
+      "POST",
+      { revision: 2 },
+      teacher,
+    );
+    expect(
+      (await request("/api/device/applied", "POST", { version: 2 }, device))
+        .status,
+    ).toBe(200);
+    const appliedAt = clock;
+    clock += 10_000;
+    expect(
+      (await request("/api/device/applied", "POST", { version: 1 }, device))
+        .status,
+    ).toBe(200);
+    const detail = parseProfileDetail(
+      await (
+        await request(`/api/profiles/${profile.id}`, "GET", undefined, teacher)
+      ).json(),
+    );
+    expect(detail.devices[0]).toMatchObject({
+      appliedVersion: 2,
+      appliedAt,
+      lastSeenAt: clock,
+    });
+  });
+  it("rejects sync and receipts after revocation or expiry, preserving receipts in backups", async () => {
+    const { profile } = await fixture();
+    const device = await pair(await code(profile.id));
+    await request(
+      `/api/profiles/${profile.id}/publish`,
+      "POST",
+      { revision: 1 },
+      teacher,
+    );
+    await request("/api/device/applied", "POST", { version: 1 }, device);
+    await store.backup(join(directory, "receipt.sqlite"));
+    const restored = new SqliteStore(join(directory, "receipt.sqlite"));
+    try {
+      const account = await restored.account("teacher_one");
+      if (!account) throw new Error("Missing restored account");
+      expect(
+        restored.classrooms.profile(account.id, profile.id).devices[0],
+      ).toMatchObject({
+        appliedVersion: 1,
+        appliedAt: clock,
+        lastSeenAt: clock,
+      });
+    } finally {
+      restored.close();
+    }
+    await request("/api/device/unlink", "POST", {}, device);
+    expect(
+      (await request("/api/device/sync", "GET", undefined, device)).status,
+    ).toBe(401);
+    expect(
+      (await request("/api/device/applied", "POST", { version: 1 }, device))
+        .status,
+    ).toBe(401);
+    const expiring = await pair(await code(profile.id));
+    clock += DEVICE_MS + 1;
+    expect(
+      (await request("/api/device/sync", "GET", undefined, expiring)).status,
+    ).toBe(401);
+    expect(
+      (await request("/api/device/applied", "POST", { version: 1 }, expiring))
+        .status,
+    ).toBe(401);
+  });
+  it("migrates legacy paired devices additively and accepts new pairs after repeated startup", async () => {
+    const { profile } = await fixture();
+    const device = await pair(await code(profile.id));
+    const db = new DatabaseSync(join(directory, "data.sqlite"));
+    try {
+      for (const column of ["applied_version", "applied_at", "last_seen_at"])
+        db.exec(`ALTER TABLE classroom_devices DROP COLUMN ${column}`);
+      new SqliteClassrooms(db);
+      new SqliteClassrooms(db);
+      expect(
+        parseDeviceSync(
+          await (
+            await request("/api/device/sync", "GET", undefined, device)
+          ).json(),
+        ).profileId,
+      ).toBe(profile.id);
+      const next = await pair(await code(profile.id));
+      expect(
+        (await request("/api/device/sync", "GET", undefined, next)).status,
+      ).toBe(200);
+      expect(
+        db.prepare("SELECT count(*) AS n FROM classroom_devices").get()?.n,
+      ).toBe(2);
+    } finally {
+      db.close();
+    }
+  });
   it("stores only credential hashes and atomically consumes a pairing code once", async () => {
     const { profile } = await fixture();
     const value = await code(profile.id);

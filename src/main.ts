@@ -8,6 +8,7 @@ import { showDismissibleModal } from "./modal";
 import "./editor-ux.css";
 import { createAccountPanel } from "./account-panel";
 import { createClassroomPanel } from "./classroom-panel";
+import { createClassroomSync, type SyncState } from "./classroom-sync";
 import { teacherClient } from "./classroom-client";
 import { accountClient } from "./account";
 import { id, type ProfileDetail } from "./classroom-contract";
@@ -48,6 +49,7 @@ import "./layout.css";
 import "./picker.css";
 import "./account.css";
 import "./categories.css";
+import "./classroom-sync.css";
 import "./fullscreen.css";
 import "./compact-layout.css";
 const root = document.querySelector<HTMLDivElement>("#app");
@@ -69,11 +71,14 @@ const fullscreen = createFullscreen(root);
 let board = starterBoard();
 let storageError = "";
 let storageBlocked = false;
+let hasStoredBoard = false;
 let replacementAuthorizedDraft: Board | null = null;
 try {
   const loaded = loadStoredBoard(localStorage);
-  if (loaded.kind === "loaded") board = loaded.board;
-  else if (loaded.kind === "unavailable") {
+  if (loaded.kind === "loaded") {
+    board = loaded.board;
+    hasStoredBoard = true;
+  } else if (loaded.kind === "unavailable") {
     storageError = loaded.message;
     storageBlocked = true;
   }
@@ -111,6 +116,39 @@ let layoutSaveWarning = "";
 let voices: SpeechSynthesisVoice[] = [];
 let selected: string | null = null;
 let typedText = "";
+let typedMessagePending = false;
+let lastInteraction = 0;
+const heldPointers = new Set<number>();
+let classroomPanelCleanup: (() => void) | undefined;
+let classroomSync: ReturnType<typeof createClassroomSync> | null = null;
+let classroomSyncState: SyncState = { kind: "unlinked" };
+const recordInteraction = () => {
+  lastInteraction = Date.now();
+};
+window.addEventListener(
+  "pointerdown",
+  (event) => {
+    heldPointers.add(event.pointerId);
+    recordInteraction();
+  },
+  true,
+);
+window.addEventListener(
+  "pointerup",
+  (event) => {
+    heldPointers.delete(event.pointerId);
+    recordInteraction();
+  },
+  true,
+);
+window.addEventListener(
+  "pointercancel",
+  (event) => heldPointers.delete(event.pointerId),
+  true,
+);
+window.addEventListener("keydown", recordInteraction, true);
+window.addEventListener("input", recordInteraction, true);
+window.addEventListener("scroll", recordInteraction, true);
 const localSpeech = createLocalSpeech();
 let speechControlsCleanup: (() => void) | undefined;
 let speechToken = 0;
@@ -424,6 +462,8 @@ function render() {
   if (!root) return;
   speechControlsCleanup?.();
   speechControlsCleanup = undefined;
+  classroomPanelCleanup?.();
+  classroomPanelCleanup = undefined;
   root.replaceChildren();
   tileButtons.clear();
   const showing = arrangement?.board ?? draft ?? board;
@@ -607,6 +647,11 @@ function render() {
     live.role = "status";
     live.setAttribute("aria-live", "polite");
     shell.append(live);
+    const syncIndicator = el("p", "classroom-sync-status", syncDescription());
+    syncIndicator.hidden = classroomSyncState.kind === "unlinked";
+    syncIndicator.dataset.fullscreenChrome = "";
+    shell.append(syncIndicator);
+
     if (storageError) shell.append(el("p", "notice error", storageError));
     if (!hasWords) {
       const empty = el("section", "notice empty-board");
@@ -685,8 +730,12 @@ function typeAndSpeak() {
     text: typedText,
     onChange: (text) => {
       typedText = text;
+      typedMessagePending = Boolean(text.trim());
     },
-    onSpeak: (text) => speakText(text, null),
+    onSpeak: (text) => {
+      typedMessagePending = false;
+      speakText(text, null);
+    },
   });
 }
 function focusEditorAction(label: string) {
@@ -980,27 +1029,20 @@ function renderEditor(shell: HTMLElement, working: Board) {
           focusEditorAction("Save board");
         },
       }),
-      createClassroomPanel({
-        confirm: confirmChange,
-        setPending: (pending) => {
-          saveBoardButton.disabled = pending;
-          if (pending)
-            saveState.textContent = "Waiting for the classroom transfer…";
-          else updateSaveState();
-        },
-        applyBoard: (next) => {
-          stop();
-          draft = next;
-          replacementAuthorizedDraft = next;
-          activeBoardId = null;
-          render();
-          status(
-            "Published classroom board loaded into the draft. Save board applies it on this device.",
-          );
-          focusEditorAction("Save board");
-        },
-      }),
     );
+  if (!teacherEditing && classroomSync) {
+    const classroomPanel = createClassroomPanel({
+      sync: classroomSync,
+      confirm: confirmChange,
+      setPending: (pending) => {
+        saveBoardButton.disabled = pending;
+        if (pending) saveState.textContent = "Connecting the classroom…";
+        else updateSaveState();
+      },
+    });
+    classroomPanelCleanup = classroomPanel.dispose;
+    backups.append(classroomPanel.element);
+  }
   shell.append(backups, el("h2", "", "Words and categories"));
   if (location.hostname === "sayboard.org") {
     const migration = el(
@@ -1487,4 +1529,64 @@ if (teacherBoardRequest) {
       root.append(back);
     }
   })();
-} else render();
+} else {
+  classroomSync = createClassroomSync({
+    storage: {
+      getItem: (key) => localStorage.getItem(key),
+      setItem: (key, value) => localStorage.setItem(key, value),
+      removeItem: (key) => localStorage.removeItem(key),
+    },
+    hasStoredBoard,
+    serverHint: document.cookie
+      .split(";")
+      .some((value) => value.trim() === "sayboard_classroom=1"),
+    canApply: () =>
+      !storageBlocked &&
+      draft === null &&
+      arrangement === null &&
+      selected === null &&
+      !typedMessagePending &&
+      heldPointers.size === 0 &&
+      Date.now() - lastInteraction >= 2000 &&
+      !document.querySelector("dialog[open]"),
+    apply: (publication) => {
+      if (!publication.board) return false;
+      try {
+        saveStoredBoard(localStorage, publication.board);
+        board = structuredClone(publication.board);
+        hasStoredBoard = true;
+        storageError = "";
+        render();
+        status(`Classroom board updated to version ${publication.version}.`);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    onState: (state) => {
+      classroomSyncState = state;
+      const indicator = document.querySelector<HTMLElement>(
+        ".classroom-sync-status",
+      );
+      if (indicator) {
+        indicator.hidden = state.kind === "unlinked";
+        indicator.textContent = syncDescription();
+      }
+    },
+  });
+  render();
+}
+
+function syncDescription() {
+  const state = classroomSyncState;
+  if (state.kind !== "linked") return "";
+  if (state.status === "offline")
+    return "Classroom offline · using saved board";
+  if (state.status === "storage-error")
+    return "Update could not be saved · current board kept";
+  if (state.status === "waiting" && state.publishedVersion)
+    return `Classroom update ready · waiting for a pause`;
+  return state.version
+    ? `Classroom version ${state.version} · automatic updates`
+    : "Classroom connected · automatic updates";
+}

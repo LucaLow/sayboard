@@ -9,6 +9,7 @@ import { createHostedCapabilitiesHandler } from "./capabilities.js";
 import { SqliteStore } from "./store.js";
 import { productionStoreFactory } from "./postgres-runtime.js";
 import { retainSources } from "./source-retention.js";
+import { sessionToken } from "./api-http.js";
 
 const json = (status: number, error: string) =>
   new Response(JSON.stringify({ error }), {
@@ -147,6 +148,16 @@ export async function startServer(env: NodeJS.ProcessEnv) {
                 : "no-cache",
           },
         });
+        if (enabled && path === "/index.html") {
+          // This readable flag only resumes sync. The HttpOnly token still authenticates every request.
+          const linked =
+            sessionToken(request, "__Host-sayboard_device") !== null;
+          response.headers.set("Cache-Control", "private, no-store");
+          response.headers.set(
+            "Set-Cookie",
+            `sayboard_classroom=${linked ? "1" : ""}; Path=/; SameSite=Strict; Max-Age=${linked ? 30 * 24 * 60 * 60 : 0}; Secure`,
+          );
+        }
       } catch {
         response = json(404, "not_found");
       }
@@ -167,11 +178,14 @@ export async function startServer(env: NodeJS.ProcessEnv) {
     });
   });
   const shutdown = () => {
-    server.close(() => {
-      sqlite?.close();
-    });
+    server.close();
     server.closeIdleConnections();
   };
+  server.once("close", () => {
+    sqlite?.close();
+    process.off("SIGTERM", shutdown);
+    process.off("SIGINT", shutdown);
+  });
   process.once("SIGTERM", shutdown);
   process.once("SIGINT", shutdown);
   return server;

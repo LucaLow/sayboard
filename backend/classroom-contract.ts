@@ -3,6 +3,7 @@ import type {
   Classroom,
   ClassroomDetail,
   ProfileDetail,
+  DeviceSync,
 } from "../src/classroom-contract.js";
 
 // The pilot has one adult owner per classroom. Ownership never comes from JSON.
@@ -54,6 +55,8 @@ export interface ClassroomStore {
     version: number;
     board: Board | null;
   } | null;
+  deviceSync(hash: string, now: number): Omit<DeviceSync, "csrfToken"> | null;
+  applied(hash: string, version: number, now: number): void;
   unlink(hash: string): void;
   revoke(owner: string, profileId: string, deviceId: string): void;
 }

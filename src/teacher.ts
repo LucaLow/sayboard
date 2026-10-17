@@ -30,6 +30,128 @@ let notice = "Checking the classroom service…";
 let errorNotice = false;
 let pairing: { code: string; expiresAt: number } | null = null;
 const fieldValues = new Map<string, string>();
+let deviceStatusContainer: HTMLElement | null = null;
+let refreshingDevices = false;
+
+function lastContact(timestamp: number | null) {
+  if (timestamp === null) return "No contact reported yet";
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (seconds < 10) return "Last contact just now";
+  if (seconds < 60) return `Last contact ${seconds} seconds ago`;
+  return `Last contact ${new Date(timestamp).toLocaleString()}`;
+}
+function renderDevices(container: HTMLElement, current: ProfileDetail) {
+  container.replaceChildren();
+  const count = root?.querySelector("[data-device-count]");
+  if (count)
+    count.textContent = current.devices.length
+      ? `${current.devices.length} linked device${current.devices.length === 1 ? "" : "s"}`
+      : "No devices linked yet";
+  const summary = el("p", "teacher-muted teacher-device-summary");
+  summary.textContent = current.devices.length
+    ? "Device reports refresh automatically. Updates wait while a learner is speaking, typing or using caregiver controls."
+    : "No devices linked yet. Pair a learner’s device once to start automatic updates.";
+  container.append(summary);
+  for (const device of current.devices) {
+    const row = el("div", "teacher-row teacher-device-row");
+    const details = el("div", "teacher-device-details");
+    const recent =
+      device.lastSeenAt !== null && Date.now() - device.lastSeenAt < 30_000;
+    const applied =
+      current.publishedVersion > 0 &&
+      device.appliedVersion === current.publishedVersion;
+    const state =
+      device.expiresAt <= Date.now()
+        ? "Link expired. Pair this device again."
+        : applied
+          ? `Version ${device.appliedVersion} saved${recent ? " · Up to date" : ""}`
+          : current.publishedVersion
+            ? `Waiting for version ${current.publishedVersion}${device.appliedVersion ? ` · Version ${device.appliedVersion} saved` : ""}`
+            : "Waiting for the first publication";
+    details.append(
+      el("strong", "", device.name),
+      el(
+        "span",
+        `teacher-device-state${applied && recent ? " current" : ""}`,
+        state,
+      ),
+      el(
+        "span",
+        "teacher-muted",
+        `${lastContact(device.lastSeenAt)}${device.lastSeenAt !== null && !recent ? " · No recent contact" : ""}`,
+      ),
+    );
+    row.append(
+      details,
+      action("Revoke " + device.name, async () => {
+        if (
+          !(await confirm(
+            `Stop future updates to ${device.name}? Its saved board stays available.`,
+          ))
+        )
+          return;
+        await teacherClient.revoke(current.id, device.id);
+        await refreshProfile();
+        notice = "Device access revoked. Its saved board remains available.";
+      }),
+    );
+    container.append(row);
+  }
+}
+async function refreshDeviceReports() {
+  const current = profile;
+  const container = deviceStatusContainer;
+  if (
+    !signedIn ||
+    !current ||
+    !container ||
+    busy ||
+    refreshingDevices ||
+    document.visibilityState !== "visible"
+  )
+    return;
+  // Updating only the receipt list preserves form values, focus, and a live pairing code.
+  if (
+    container.contains(document.activeElement) ||
+    document.querySelector("dialog[open]")
+  )
+    return;
+  refreshingDevices = true;
+  try {
+    const latest = await teacherClient.profile(current.id);
+    if (
+      !signedIn ||
+      profile?.id !== current.id ||
+      container !== deviceStatusContainer ||
+      busy ||
+      container.contains(document.activeElement) ||
+      document.querySelector("dialog[open]")
+    )
+      return;
+    profile = { ...profile, devices: latest.devices };
+    renderDevices(container, latest);
+  } catch (error) {
+    if (profile?.id !== current.id || container !== deviceStatusContainer)
+      return;
+    if (
+      (error instanceof ClassroomError || error instanceof AccountError) &&
+      [401, 403].includes(error.status)
+    ) {
+      clearPrivateView();
+      notice =
+        "Your teacher session ended. Sign in again to see device reports.";
+      errorNotice = true;
+      render();
+    } else {
+      const summary = container.querySelector(".teacher-device-summary");
+      if (summary)
+        summary.textContent =
+          "Device reports could not refresh. The reports below show the last known state. Saved learner boards remain available.";
+    }
+  } finally {
+    refreshingDevices = false;
+  }
+}
 
 function link(label: string, href: string, className = "button") {
   const a = el("a", className, label);
@@ -164,6 +286,7 @@ function exportProfile(value: ProfileDetail) {
 }
 function render() {
   if (!root) return;
+  deviceStatusContainer = null;
   root.replaceChildren();
   const shell = el("main", "teacher-shell");
   const header = el("header", "teacher-header");
@@ -201,7 +324,7 @@ function render() {
       el(
         "p",
         "teacher-intro",
-        "Prepare boards, publish a version and link classroom devices. Each device keeps its working board when disconnected.",
+        "Prepare a board, link each learner’s device once, then publish updates from here. Linked devices update automatically and keep their saved board when disconnected.",
       ),
     );
     const card = el("section", "teacher-card teacher-login");
@@ -299,7 +422,7 @@ function render() {
         "Create a classroom and add a learner alias.",
         "Edit and preview the learner’s board.",
         "Publish a version when it is ready.",
-        "Link a device and load the published board through caregiver controls.",
+        "Link a learner’s device once. Future publications arrive automatically.",
       ])
         guide.append(el("li", "", step));
       shell.append(
@@ -395,7 +518,7 @@ function render() {
       el(
         "p",
         "teacher-intro",
-        "Edit a draft here. Published versions stay unchanged until you choose to publish again.",
+        "Prepare changes in the draft, then publish. Linked learner devices receive each publication automatically when communication and caregiver editing have finished.",
       ),
       status,
     );
@@ -410,26 +533,29 @@ function render() {
           : "Not published yet",
       ],
       [
-        "Connect",
+        "Link once",
         current.devices.length
           ? `${current.devices.length} linked device${current.devices.length === 1 ? "" : "s"}`
           : "No devices linked yet",
       ],
     ]) {
       const step = el("li");
-      step.append(el("strong", "", title), el("span", "", detail));
+      const description = el("span", "", detail);
+      if (title === "Link once") description.dataset.deviceCount = "";
+      step.append(el("strong", "", title), description);
       progress.append(step);
     }
     shell.append(progress);
     const grid = el("div", "teacher-profile-grid");
     const draft = el("section", "teacher-card");
+    const homeTiles = current.board.tiles.filter(Boolean).length;
     draft.append(
       el("p", "teacher-eyebrow", "DRAFT"),
       el("h2", "", "Prepare the board"),
       el(
         "p",
         "",
-        `${current.board.tiles.filter(Boolean).length} home tiles · ${current.board.subBoards.length} ${current.board.subBoards.length === 1 ? "category" : "categories"} · Draft revision ${current.revision}`,
+        `${homeTiles} home ${homeTiles === 1 ? "tile" : "tiles"} · ${current.board.subBoards.length} ${current.board.subBoards.length === 1 ? "category" : "categories"} · Draft revision ${current.revision}`,
       ),
     );
     const actions = el("div", "teacher-actions");
@@ -460,7 +586,7 @@ function render() {
       ),
     );
     grid.append(draft);
-    const publish = el("section", "teacher-card");
+    const publish = el("section", "teacher-card teacher-publication");
     publish.append(
       el("p", "teacher-eyebrow", "PUBLISHED"),
       el(
@@ -473,20 +599,20 @@ function render() {
       el(
         "p",
         "",
-        "Linked devices load the published board through caregiver controls. Updates never rearrange a board during communication.",
+        "Publishing sends the saved draft to linked devices automatically. Devices keep their current board until the new version is saved safely and communication is idle.",
       ),
       action(
         "Publish saved draft",
         async () => {
           if (
             !(await confirm(
-              `Publish the saved draft for ${current.label}? Linked devices can then load this version. Their working boards will not change automatically.`,
+              `Publish the saved draft for ${current.label}? Linked devices will update automatically after speech, typing and caregiver editing finish.`,
             ))
           )
             return;
           profile = await teacherClient.publish(current.id, current.revision);
           room = await teacherClient.classroom(classroom.id);
-          notice = `Version ${profile.publishedVersion} is published.`;
+          notice = `Version ${profile.publishedVersion} published. Linked devices update automatically. Check their reports below to confirm receipt.`;
         },
         true,
       ),
@@ -496,20 +622,45 @@ function render() {
       }),
     );
     grid.append(publish);
-    const devices = el("section", "teacher-card");
+    const devices = el("section", "teacher-card teacher-devices");
     devices.append(
       el("h2", "", "Classroom devices"),
       el(
         "p",
         "",
-        "On the learner’s device, open this website, choose caregiver controls, then Backup and transfer → Classroom board.",
+        "Pair each learner’s device once. After that, publish from this dashboard without touching the learner’s device.",
+      ),
+    );
+    const reports = el("div", "teacher-device-reports");
+    deviceStatusContainer = reports;
+    renderDevices(reports, current);
+    devices.append(reports);
+    const setup = el("details", "teacher-device-setup");
+    setup.open = !current.devices.length || pairing !== null;
+    setup.append(
+      el("summary", "", "Link a learner device"),
+      el(
+        "p",
+        "teacher-muted",
+        "On the learner’s device, open the address below. Choose Caregiver controls → Edit board and settings → Backup and transfer → Classroom board. Enter the code, choose Link classroom device and confirm the initial connection.",
       ),
       form("device", "Device name", "Create pairing code", async (name) => {
         pairing = await teacherClient.pairing(current.id, name);
         notice =
-          "Enter this code on the intended device within ten minutes. Creating another code replaces this one.";
+          "Enter this code on the intended device within ten minutes and confirm the initial connection. Future publications sync automatically. Creating another code replaces this one.";
       }),
     );
+    const address = el(
+      "label",
+      "teacher-link-field",
+      "Open this address on the learner’s device",
+    );
+    const addressInput = el("input");
+    addressInput.readOnly = true;
+    addressInput.value = location.origin + "/";
+    addressInput.onclick = () => addressInput.select();
+    address.append(addressInput);
+    setup.insertBefore(address, setup.querySelector("form"));
     if (pairing) {
       const panel = el("div", "teacher-pairing");
       panel.append(
@@ -521,19 +672,8 @@ function render() {
           `Expires ${new Date(pairing.expiresAt).toLocaleTimeString()}. Refreshing this page hides the code.`,
         ),
       );
-      const address = el(
-        "label",
-        "teacher-link-field",
-        "Open this address on the learner’s device",
-      );
-      const addressInput = el("input");
-      addressInput.readOnly = true;
-      addressInput.value = location.origin + "/";
-      addressInput.onclick = () => addressInput.select();
-      address.append(addressInput);
-      devices.prepend(address);
-      devices.append(panel);
-      devices.append(
+      setup.append(panel);
+      setup.append(
         action("Copy pairing code", async () => {
           if (!pairing) return;
           try {
@@ -545,26 +685,7 @@ function render() {
         }),
       );
     }
-    if (!current.devices.length)
-      devices.append(el("p", "teacher-muted", "No active linked devices."));
-    for (const device of current.devices) {
-      const row = el("div", "teacher-row");
-      row.append(
-        el("span", "", device.name),
-        action("Revoke " + device.name, async () => {
-          if (
-            !(await confirm(
-              `Stop future transfers to ${device.name}? Its working board stays available.`,
-            ))
-          )
-            return;
-          await teacherClient.revoke(current.id, device.id);
-          await refreshProfile();
-          notice = "Device access revoked.";
-        }),
-      );
-      devices.append(row);
-    }
+    devices.append(setup);
     grid.append(devices);
     const versions = el("section", "teacher-card");
     versions.append(el("h2", "", "Published versions"));
@@ -632,6 +753,10 @@ function render() {
       .querySelectorAll<HTMLInputElement | HTMLButtonElement>("input,button")
       .forEach((control) => (control.disabled = true));
 }
+setInterval(() => void refreshDeviceReports(), 5000);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") void refreshDeviceReports();
+});
 // Opening another private link in this tab changes only the fragment. Start a
 // fresh activation page rather than leaving the signed-in workspace on screen.
 window.addEventListener("hashchange", () => {

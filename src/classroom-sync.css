@@ -1,0 +1,11 @@
+.classroom-sync-status {
+  margin: 0 0 12px;
+  color: var(--muted, #52685d);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.classroom-sync-status[hidden] {
+  display: none;
+}
+
+:root[data-theme="dark"] .classroom-sync-status { color: #b8c9bf; }

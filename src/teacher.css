@@ -59,6 +59,45 @@
   padding: 28px;
   min-width: 0;
 }
+.teacher-publication {
+  border-color: #7b9b75;
+  background: #f5f8ee;
+}
+.teacher-devices {
+  grid-column: 1 / -1;
+}
+.teacher-device-details {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.teacher-device-state {
+  color: #715022;
+  font-size: 15px;
+}
+.teacher-device-state.current {
+  color: #285c3f;
+}
+.teacher-device-setup {
+  margin-top: 22px;
+  border-top: 1px solid #dce4d8;
+  padding-top: 20px;
+}
+.teacher-device-setup > summary {
+  cursor: pointer;
+  font-weight: 700;
+  padding: 6px 0;
+}
+.teacher-device-setup .teacher-form {
+  max-width: 480px;
+}
+.teacher-device-setup .teacher-link-field {
+  max-width: 620px;
+}
+.teacher-device-summary {
+  max-width: 760px;
+}
 .teacher-login {
   max-width: 470px;
   margin: 32px 0 24px;

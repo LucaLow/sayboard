@@ -9,14 +9,18 @@ The pilot runs the complete app, authentication, dashboard and SQLite database o
 3. Choose **Edit board**. The existing board editor supports tiles, categories, import and export. **Save classroom draft** stores the draft on the server.
 4. Choose **Preview board** to try the actual communication view. Return to the dashboard and **Publish saved draft** when it is ready.
 5. Enter a device name and create a pairing code. The code expires after 10 minutes and works once. Creating another code replaces the previous unused code for that profile.
-6. On the intended device, open the same classroom hostname. Enter caregiver controls, choose **Edit board and settings**, expand **Backup and transfer**, and enter the pairing code under classroom connection.
-7. Linking does not replace the local board. Choose **Load published board**, review the draft, then **Save board** to apply it.
+6. On the intended device, open the same classroom hostname. Choose **Caregiver controls**, then **Edit board and settings**, and expand **Backup and transfer**.
+7. Under **Classroom board**, enter the pairing code and choose **Link classroom device**. Confirm the initial connection. This authorises the teacher's publications to replace this device's saved board automatically.
 
-Updates follow the same deliberate load and save steps. **Load published board** fetches the latest publication even when the connection panel was opened before the teacher published again. If the version changes during confirmation, loading stops and asks the caregiver to review the new version. The board does not rearrange itself while someone is communicating. On a later visit, **Check classroom connection** restores the connection panel from the device's secure cookie.
+After pairing, leave the learner's device on its communication board. Edit and **Save classroom draft** from the teacher editor, then choose **Publish saved draft** in the dashboard. The learner's device checks for publications automatically while the app is open. No repeated load or save steps are required on that device.
+
+The device waits until speech, typing and caregiver editing have finished before applying a complete, validated publication. It saves that version locally before reporting receipt. If a download or save fails, the previous saved board remains available and the device retries. A device that reconnects catches up with the latest publication.
+
+The dashboard's **Classroom devices** section refreshes device reports automatically. **Version N saved · Up to date** confirms that a recently connected device reported saving that publication. **Waiting for version N** means receipt has not been confirmed. **No recent contact** means the device has not contacted the server recently; it may be offline, suspended or closed. Publication alone does not confirm receipt.
 
 ## Recover or remove access
 
-Select an older version in the dashboard to restore it into the draft, then preview and publish separately. Existing devices keep their current local board until a caregiver applies an update.
+Select an older version in the dashboard to restore it into the draft, then preview and publish separately. Linked devices receive the new publication automatically at the next safe point.
 
 Revoke a device in the dashboard to stop future downloads. A device can also disconnect itself. Neither action erases its working local board. Device credentials expire after 30 days; pair again when needed. Clearing browser cookies also requires pairing again.
 
