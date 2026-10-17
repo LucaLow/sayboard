@@ -326,6 +326,7 @@ export async function checkClassroomFlow({
       )
       .waitFor();
     // A publication arriving during the confirmation must not load silently.
+    await changeDraft("Published one", "Published three");
     await publish();
     await page
       .getByRole("heading", { name: "Version 4", exact: true })
@@ -384,16 +385,16 @@ export async function checkClassroomFlow({
       .getByRole("button", { name: "Back to board", exact: true })
       .click();
     await tablet
-      .getByRole("button", { name: "Say Published one", exact: true })
+      .getByRole("button", { name: "Say Published three", exact: true })
       .waitFor();
     await tablet.reload();
     await tablet
-      .getByRole("button", { name: "Say Published one", exact: true })
+      .getByRole("button", { name: "Say Published three", exact: true })
       .waitFor();
     await device.setOffline(true);
     assert.ok(
       await tablet
-        .getByRole("button", { name: "Say Published one", exact: true })
+        .getByRole("button", { name: "Say Published three", exact: true })
         .isVisible(),
     );
     await page
