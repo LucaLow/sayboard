@@ -1548,9 +1548,7 @@ if (teacherBoardRequest) {
       !typedMessagePending &&
       heldPointers.size === 0 &&
       Date.now() - lastInteraction >= 2000 &&
-      !document.querySelector("dialog[open]") &&
-      !(document.activeElement instanceof HTMLInputElement) &&
-      !(document.activeElement instanceof HTMLTextAreaElement),
+      !document.querySelector("dialog[open]"),
     apply: (publication) => {
       if (!publication.board) return false;
       try {

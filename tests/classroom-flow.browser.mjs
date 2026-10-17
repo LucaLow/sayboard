@@ -59,11 +59,33 @@ export async function checkClassroomFlow({
     });
   });
   const errors = [];
+  const offlineTransportErrors = [];
+  let deviceOffline = false;
+  const setDeviceOffline = async (offline) => {
+    deviceOffline = offline;
+    await device.setOffline(offline);
+  };
   const page = await teacher.newPage();
   const tablet = await device.newPage();
   for (const current of [page, tablet]) {
     current.setDefaultTimeout(15000);
-    current.on("pageerror", (e) => errors.push(e.message));
+    current.on("pageerror", (error) => {
+      // WebKit emits a pageerror for some intentionally failed offline fetches,
+      // even when the application handles the rejected fetch. Keep this narrow:
+      // only its device-endpoint transport message during our offline phase.
+      if (
+        current === tablet &&
+        deviceOffline &&
+        engine === "webkit" &&
+        /\/api\/device\/(?:sync|board) due to access control checks\.$/.test(
+          error.message,
+        )
+      ) {
+        offlineTransportErrors.push(error.message);
+        return;
+      }
+      errors.push(error.message);
+    });
   }
   const confirm = (current) =>
     current.getByRole("button", { name: "Confirm", exact: true }).click();
@@ -396,7 +418,7 @@ export async function checkClassroomFlow({
     await applied("Newest version wins", newestAt);
     await device.unroute("**/api/device/board");
 
-    await device.setOffline(true);
+    await setDeviceOffline(true);
     const offlineBoard = await persisted();
     await publishLabel("Published while offline");
     await new Promise((resolve) => setTimeout(resolve, 6500));
@@ -405,7 +427,7 @@ export async function checkClassroomFlow({
       offlineBoard,
       "Network loss must preserve the last saved communication board",
     );
-    await device.setOffline(false);
+    await setDeviceOffline(false);
     await applied("Published while offline");
 
     // Simulate a browser quota failure at the real localStorage boundary. The
@@ -448,21 +470,41 @@ export async function checkClassroomFlow({
       "Please keep my message",
     );
     await tablet.getByLabel("Type something to say", { exact: true }).fill("");
-    await tablet.getByLabel("Type something to say", { exact: true }).blur();
+    assert.equal(
+      await tablet
+        .getByLabel("Type something to say", { exact: true })
+        .evaluate((input) => document.activeElement === input),
+      true,
+    );
     await applied("After typed message");
+
+    // A learner may leave an empty message field focused indefinitely. Focus
+    // alone must never turn automatic publication into another manual workflow.
+    await tablet.getByLabel("Type something to say", { exact: true }).focus();
+    const focusedAt = await publishLabel("Empty focused input updates");
+    await applied("Empty focused input updates", focusedAt);
+    assert.equal(
+      await tablet
+        .getByLabel("Type something to say", { exact: true })
+        .inputValue(),
+      "",
+    );
 
     await tablet.evaluate(() => {
       window.__holdClassroomSpeech = true;
     });
     await tablet
-      .getByRole("button", { name: "Say After typed message", exact: true })
+      .getByRole("button", {
+        name: "Say Empty focused input updates",
+        exact: true,
+      })
       .click();
     await waitUntil(
       () => tablet.evaluate(() => Boolean(window.__classroomUtterance)),
       "Synthetic local speech must have started",
     );
     await publishLabel("After speech finishes");
-    await stays("After typed message");
+    await stays("Empty focused input updates");
     await tablet.evaluate(() => {
       window.__holdClassroomSpeech = false;
       window.__classroomUtterance.onend?.();
@@ -563,7 +605,7 @@ export async function checkClassroomFlow({
     await tablet
       .getByRole("button", { name: "Say After category removed", exact: true })
       .waitFor();
-    await device.setOffline(true);
+    await setDeviceOffline(true);
     assert.ok(
       await tablet
         .getByRole("button", {
@@ -608,6 +650,8 @@ export async function checkClassroomFlow({
       storageFailureDoesNotApplyOrAcknowledge: true,
       temporaryStorageFailureRetriesAutomatically: true,
       typedMessageDelaysUpdate: true,
+      clearingMessageUpdatesWithoutBlurring: true,
+      emptyFocusedInputDoesNotBlockAutomaticUpdate: true,
       speechFinishesBeforeUpdate: true,
       caregiverDraftSurvivesPublication: true,
       idleCategoryUpdatesWithoutLearnerNavigation: true,
@@ -618,6 +662,7 @@ export async function checkClassroomFlow({
       classroomDeleted: true,
       logout: true,
       automaticUpdateLatencyMs: latencies,
+      expectedWebkitOfflineTransportErrors: offlineTransportErrors.length,
       errors,
     };
   } catch (error) {
