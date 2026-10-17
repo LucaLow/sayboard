@@ -1,0 +1,1 @@
+export default {resolve:{alias:{phonemizer:new URL("../../src/speech/phonemizer.ts",import.meta.url).pathname}},worker:{format:'es'},build:{outDir:'test-results/browser',rollupOptions:{input:'tests/browser/speech.html'}}};

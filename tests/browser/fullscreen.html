@@ -1,0 +1,32 @@
+<!doctype html>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<div id="app"></div>
+<script type="module">
+import { createFullscreen } from '/src/fullscreen.ts';
+import '/src/style.css';
+import '/src/layout.css';
+import '/src/fullscreen.css';
+const root = document.querySelector('#app');
+const fullscreen = createFullscreen(root);
+let category = false;
+let stops = 0;
+let taps = 0;
+function render() {
+  root.innerHTML = `<main class="shell"><header class="header" data-fullscreen-chrome><span>sayboard</span><div class="header-controls"><button class="button">Theme</button><button class="button">Caregiver</button><button class="button" disabled>Login unavailable</button></div></header><div class="speechbar"><span aria-hidden="true">◖</span><p role="status" id="status">Tap a word to speak.</p><div class="speech-actions"><button class="button stop">Stop speaking</button></div></div><nav class="category-navigation"><button class="button back">Back</button><button class="button home">Home</button></nav><div class="board-viewport" tabindex="0"><div class="grid" data-size="standard" style="--board-columns: 3"></div></div></main>`;
+  root.querySelector('.header-controls').prepend(fullscreen.createEntryButton());
+  root.querySelector('.speechbar').after(fullscreen.createControls());
+  for(let i=0;i<9;i++) {
+    const tile = document.createElement(i===4?'div':'button');
+    tile.className = i===4?'empty-slot':'tile mint';
+    tile.textContent = i===4?'':category?`Child ${i}`:`Word ${i}`;
+    if(i!==4) tile.onclick = () => { if(i===0&&!category) {category=true;render();root.querySelector(".home").focus();} else {taps++;document.querySelector('#status').textContent=`Said: ${tile.textContent}`;} };
+    root.querySelector('.grid').append(tile);
+  }
+  root.querySelector('.stop').onclick = () => { stops++; document.querySelector('#status').textContent='Speech stopped.'; };
+  root.querySelector('.home').onclick = root.querySelector('.back').onclick = () => { category=false;render();root.querySelector(".tile").focus(); };
+  fullscreen.refresh();
+}
+render();
+window.testState = () => ({category,stops,taps});
+window.testFullscreen = fullscreen;
+</script>

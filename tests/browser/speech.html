@@ -1,0 +1,13 @@
+<!doctype html><html lang="en"><title>Private speech evaluation</title><body><main id="controls"></main><button id="yes">Yes</button><button id="no">No</button><button id="help">Help</button><button id="water">I need water</button><button id="stop-word">Say Stop</button><button id="stop">Stop</button><p id="output" role="status"></p><script type="module">
+import { createLocalSpeech } from '/src/speech/local-speech.ts';
+const {engine,mountControls}=createLocalSpeech();
+// Headless Chromium has no installed device voice. Synthetic stub tests fallback lifecycle, not OS audio quality.
+window.fallbacks=[];let deviceTimer;
+engine.output.system=(text,options)=>{window.fallbacks.push(text);options.onStart?.();deviceTimer=setTimeout(()=>options.onEnd?.(),20);};
+const cancel=engine.output.cancel.bind(engine.output);engine.output.cancel=()=>{clearTimeout(deviceTimer);cancel();};
+window.generateSample=text=>engine.model.generate(text,1);
+mountControls(document.querySelector('#controls'));
+window.results=[];window.speechEngine=engine;
+for(const [id,text] of [['yes','Yes'],['no','No'],['help','Help'],['stop-word','Stop'],['water','I need water']])document.querySelector('#'+id).onclick=()=>{const started=performance.now();engine.speak(text,{onStart:()=>{window.results.push({text,latencyMs:performance.now()-started});document.querySelector('#output').textContent='Speaking: '+text;},onEnd:()=>{document.querySelector('#output').textContent='Said: '+text;},onError:detail=>{document.querySelector('#output').textContent=detail;}});};
+document.querySelector('#stop').onclick=()=>{engine.cancel();document.querySelector('#output').textContent='Stopped';};
+</script></body></html>

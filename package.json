@@ -1,0 +1,45 @@
+{
+  "name": "sayboard",
+  "version": "0.1.0",
+  "license": "GPL-3.0-or-later",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "npm run source:assemble && tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "check:public": "python3 scripts/public_readiness.py",
+    "test:free-core": "node tests/free-core.browser.mjs",
+    "preview": "vite preview --host 127.0.0.1",
+    "test:speech:browser": "node tests/browser/speech.mjs",
+    "source:assemble": "python3 scripts/speech/release/assemble.py",
+    "build:server": "node scripts/build-server.mjs",
+    "start": "NODE_ENV=production SAYBOARD_SERVER_ENTRY=1 node server-dist/server.cjs",
+    "account": "NODE_ENV=production node server-dist/manage.cjs"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.5",
+    "playwright": "1.64.0",
+    "prettier": "^3.9.10",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.1",
+    "vite": "^7.3.7",
+    "vitest": "^4.1.11"
+  },
+  "dependencies": {
+    "kokoro-js": "1.2.1",
+    "lucide": "^1.55.0"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "workspaces": [
+    "backend"
+  ],
+  "overrides": {
+    "sharp": "0.35.5",
+    "global-agent": "4.1.3"
+  }
+}

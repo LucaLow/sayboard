@@ -1,0 +1,24 @@
+name: Report a bug
+description: Report a reproducible problem using demonstration data.
+body:
+  - type: markdown
+    attributes:
+      value: Do not include real boards, student details, audio or credentials. Use the private route in SECURITY.md for vulnerabilities.
+  - type: input
+    id: environment
+    attributes:
+      label: Device, browser and Sayboard version
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce with demonstration data
+    validations:
+      required: true
+  - type: textarea
+    id: behaviour
+    attributes:
+      label: Expected and actual behaviour
+    validations:
+      required: true

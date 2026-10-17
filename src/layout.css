@@ -1,0 +1,72 @@
+/* Row order always follows saved slots, including gaps. Do not use dense packing. */
+.grid[data-size] {
+  grid-auto-flow: row;
+}
+.grid[data-size] > * {
+  min-width: 0;
+}
+.grid[data-size="standard"] {
+  grid-template-columns: repeat(var(--board-columns, 5), minmax(120px, 1fr));
+}
+.grid[data-size="large"] {
+  grid-template-columns: repeat(var(--board-columns, 5), minmax(160px, 1fr));
+}
+.grid[data-size="extra-large"] {
+  grid-template-columns: repeat(var(--board-columns, 5), minmax(210px, 1fr));
+}
+.grid[data-size="large"] > .tile,
+.grid[data-size="large"] > .empty-slot {
+  min-height: 170px;
+}
+.grid[data-size="large"] > .tile {
+  font-size: 26px;
+  gap: 18px;
+  padding: 22px 12px;
+}
+.grid[data-size="large"] .tile svg {
+  width: 52px;
+  height: 52px;
+}
+.grid[data-size="extra-large"] > .tile,
+.grid[data-size="extra-large"] > .empty-slot {
+  min-height: 210px;
+}
+.grid[data-size="extra-large"] > .tile {
+  font-size: 30px;
+  gap: 20px;
+  padding: 26px 14px;
+}
+.grid[data-size="extra-large"] .tile svg {
+  width: 64px;
+  height: 64px;
+}
+.grid[data-size="large"] .tile .emoji {
+  font-size: 52px;
+}
+.grid[data-size="extra-large"] .tile .emoji {
+  font-size: 64px;
+}
+
+/* Geometry comes from the caregiver's device choice, never viewport breakpoints. */
+.board-viewport {
+  overflow: auto;
+  padding: 6px;
+  margin: -6px;
+  scroll-padding: 6px;
+}
+.board-viewport:focus-visible {
+  outline: 4px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.layout-preview {
+  display: grid;
+  grid-template-columns: repeat(var(--board-columns), minmax(0, 1fr));
+  gap: 4px;
+  align-self: start;
+}
+.layout-preview span {
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+  text-align: center;
+  padding: 4px;
+}

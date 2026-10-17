@@ -1,0 +1,55 @@
+/* Rows grow for labels, never clip vocabulary. */
+.grid[data-size="small"] {
+  grid-template-columns: repeat(var(--board-columns, 2), minmax(112px, 1fr));
+  gap: 12px;
+}
+.grid[data-size="small"] > .tile,
+.grid[data-size="small"] > .empty-slot {
+  min-height: 96px;
+  border-radius: 16px;
+}
+.grid[data-size="small"] > .tile {
+  padding: 10px 8px;
+  font-size: 18px;
+  line-height: 1.25;
+  gap: 8px;
+}
+.grid[data-size="small"] .tile svg {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+.grid[data-size="small"] .tile .emoji {
+  font-size: 28px;
+  line-height: 1;
+}
+.grid[data-size="small"] .tile span {
+  max-width: 100%;
+}
+.device-layout-settings {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.device-layout-settings h2 {
+  margin: 0;
+}
+.device-layout-settings .button {
+  justify-self: start;
+  min-width: 44px;
+}
+
+/* Only an explicit 2-column Small choice reduces phone chrome. */
+@media (max-width: 540px), (max-height: 540px) {
+  .shell[data-compact-phone="true"] {
+    padding: max(8px, env(safe-area-inset-top))
+      max(12px, env(safe-area-inset-right))
+      max(12px, env(safe-area-inset-bottom))
+      max(12px, env(safe-area-inset-left));
+  }
+  .shell[data-compact-phone="true"] .header {
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+  }
+}

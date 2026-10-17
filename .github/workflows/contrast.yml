@@ -1,0 +1,32 @@
+name: Rendered contrast
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  contrast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - name: Measure browser colors
+        run: |
+          npm run dev -- --port 5174 > /tmp/sayboard-vite.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            curl --fail --silent http://127.0.0.1:5174/ > /dev/null && break
+            sleep 1
+          done
+          node tests/browser/contrast.mjs
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          retention-days: 7
+          name: rendered-contrast
+          path: test-results/contrast/

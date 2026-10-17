@@ -1,0 +1,67 @@
+name: Integrated frontend
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  built-app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SAYBOARD_APP_URL: http://127.0.0.1:5189/
+      SAYBOARD_PREVIEW_URL: http://127.0.0.1:5189/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: python3 scripts/verify-source.py
+      - run: npx playwright install --with-deps chromium webkit
+      - name: Start built app
+        run: |
+          npm run preview -- --port 5189 > /tmp/sayboard-preview.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            curl --fail --silent http://127.0.0.1:5189/ > /dev/null && break
+            sleep 1
+          done
+          browser_path=$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')
+          echo "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=$browser_path" >> "$GITHUB_ENV"
+          echo "CHROMIUM_PATH=$browser_path" >> "$GITHUB_ENV"
+      - name: Check speech in WebKit and Chromium
+        env:
+          SAYBOARD_TEST_URL: http://127.0.0.1:5189/
+          SAYBOARD_MODULE_URL: http://127.0.0.1:5190/
+        run: |
+          npm run dev -- --port 5190 > /tmp/sayboard-speech-dev.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            curl --fail --silent http://127.0.0.1:5190/ > /dev/null && break
+            sleep 1
+          done
+          node tests/browser/iphone-speech.mjs
+      - run: node tests/browser/contrast.mjs
+      - run: npm run test:free-core
+      - run: node tests/settings-editor.browser.mjs
+      - run: node tests/editor-navigation.browser.mjs
+      - run: node tests/quick-add.browser.mjs
+      - run: node tests/symbol-picker.browser.mjs
+      - run: node tests/settings-phone-layout.browser.mjs
+      - run: node tests/type-and-speak.browser.mjs
+      - run: node tests/browser/sound-help.mjs
+      - run: node tests/browser/arrangement.mjs
+      - run: node tests/browser/fullscreen-app.mjs
+      - run: node tests/compact-layout.browser.mjs
+      - run: node tests/navigation-layout.browser.mjs
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          retention-days: 7
+          name: integrated-built-app
+          path: test-results/

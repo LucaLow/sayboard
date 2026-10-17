@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "tiles": [
+    {
+      "id": "custom-drink",
+      "label": "Drink",
+      "phrase": "My usual drink please",
+      "icon": "emoji:1f964",
+      "tone": "blue"
+    },
+    null,
+    {
+      "id": "__proto__",
+      "label": "My choice",
+      "phrase": "I choose my own words",
+      "icon": "heart",
+      "tone": "mint"
+    },
+    null,
+    {
+      "id": "日本語",
+      "label": "こんにちは",
+      "phrase": "こんにちは",
+      "icon": "message-circle",
+      "tone": "lavender"
+    },
+    null
+  ],
+  "voice": "unavailable-custom-local-voice",
+  "rate": 1.2,
+  "size": "extra-large"
+}

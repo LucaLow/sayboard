@@ -1,0 +1,19 @@
+{
+  "espeakSource": "4870adfa25b1a32b4361592f1be8a40337c58d6c",
+  "compilerSource": "a1fe3902bf73a3802eae0357d273d0e37ea79898",
+  "emscripten": "3.1.64",
+  "artifacts": {
+    "espeak.js": "9d9d2db89f54b46b617f7b72cddc6d9c1b7bcc5d8e6079f675321169ae0f4e89",
+    "espeak.wasm": "60b5f8fc32e6adb76899fa992e07891feaad7004b16e16504d49cae4cbdb82a1"
+  },
+  "repeatBuildsIdentical": true,
+  "publicShippingGate": "Owner authorized complete browser frontend source release. Integration, accessible release source, reproducibility and listening checks required before deployment.",
+  "sourceArchiveBuildVerified": true,
+  "verifiedBuildCount": 3,
+  "initialVerifiedArchive": {
+    "sha256": "2976331cd7d264802593f04813a9147c17e20063955f5e22275d15735f9d34d6",
+    "bytes": 23664507,
+    "verifiedBuildCount": 3
+  },
+  "sourceDelivery": "/source/index.html; release manifest records current deterministic archive SHA-256"
+}

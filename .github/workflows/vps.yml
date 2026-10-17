@@ -1,0 +1,28 @@
+name: Standalone VPS
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  standalone:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm audit --audit-level=moderate
+      - run: npx playwright install --with-deps chromium
+      - run: docker build -t sayboard:publication-review .
+      - run: node scripts/verify-vps.mjs
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: vps-failure
+          retention-days: 7
+          path: test-results/publication/vps-container.log

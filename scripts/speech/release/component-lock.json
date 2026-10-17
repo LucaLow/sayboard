@@ -1,0 +1,434 @@
+[
+  {
+    "name": "kokoro",
+    "cacheFile": "kokoro.tar.gz",
+    "revision": "664c76a704021239ba59c84dcbaa4d3dece01fe9",
+    "sha256": "7fb00d418195be678663f7844380abaf791aba4749137ed402d0da197bfa00cb",
+    "format": "tar",
+    "url": "https://codeload.github.com/hexgrad/kokoro/tar.gz/664c76a704021239ba59c84dcbaa4d3dece01fe9"
+  },
+  {
+    "name": "transformers",
+    "cacheFile": "transformers.tar.gz",
+    "revision": "2ec882e739e4cb461f8d440d4d7394cbf5372429",
+    "sha256": "8ce5ae4b5327892b72ac91c733583765ee12f70e596a30da6ea31cb51eeab55e",
+    "format": "tar",
+    "url": "https://codeload.github.com/huggingface/transformers.js/tar.gz/2ec882e739e4cb461f8d440d4d7394cbf5372429"
+  },
+  {
+    "name": "onnxruntime-web",
+    "cacheFile": "onnxruntime-web.tar.gz",
+    "revision": "89f8206ba4f1c22c39e0297fb55272e8ce8cd7d0",
+    "sha256": "12d10c25fccca4fe79be554acd6bd9b73c90d2b3fda9d2677960db0302cd79f7",
+    "format": "tar",
+    "url": "https://codeload.github.com/microsoft/onnxruntime/tar.gz/89f8206ba4f1c22c39e0297fb55272e8ce8cd7d0"
+  },
+  {
+    "name": "onnxruntime-common121",
+    "cacheFile": "onnxruntime-common121.tar.gz",
+    "revision": "6d69a05a6b391997b34311b3df9b32b05af02764",
+    "sha256": "608963648f35da8bd4619fd9dac1ba4d9ca476e7101f58f70e4190359fecc325",
+    "format": "tar",
+    "url": "https://codeload.github.com/microsoft/onnxruntime/tar.gz/6d69a05a6b391997b34311b3df9b32b05af02764"
+  },
+  {
+    "name": "lucide",
+    "cacheFile": "lucide.tar.gz",
+    "revision": "70562c1ee1c4fdcf736fe97bc893fb8511927934",
+    "sha256": "df38e91e825b69302c9f05859e5d8c6abc857f76971154ae886de176f9a9d8dd",
+    "format": "tar",
+    "url": "https://codeload.github.com/lucide-icons/lucide/tar.gz/70562c1ee1c4fdcf736fe97bc893fb8511927934"
+  },
+  {
+    "name": "jinja-preferred",
+    "cacheFile": "jinja-preferred.tar.gz",
+    "revision": "c3f76b460cbfe5a9827123ab9e17a65998aeb70f",
+    "sha256": "220cca4848b2fcfb8b82a964a1fd2d7d5f3e27e5ea961a4dc7e1547d079fc43a",
+    "format": "tar",
+    "url": "https://codeload.github.com/huggingface/huggingface.js/tar.gz/c3f76b460cbfe5a9827123ab9e17a65998aeb70f"
+  },
+  {
+    "name": "emsdk-ort",
+    "cacheFile": "emsdk-ort.tar.gz",
+    "revision": "074211759c17c646164d3271ca1d155cc174f78e",
+    "sha256": "d5e9af17d3da29c2f6000118e4634bcc406a8b45a3023f1d7650c78626b276ca",
+    "format": "tar",
+    "url": "https://codeload.github.com/emscripten-core/emsdk/tar.gz/074211759c17c646164d3271ca1d155cc174f78e"
+  },
+  {
+    "name": "emscripten-3.1.64",
+    "cacheFile": "emscripten-3.1.64.tar.gz",
+    "revision": "3.1.64",
+    "sha256": "7ee24e77ed0a026d00c3df2e46bfe53106ef61db57059949a38bc5bfe5399686",
+    "format": "tar",
+    "url": "https://codeload.github.com/emscripten-core/emscripten/tar.gz/3.1.64"
+  },
+  {
+    "name": "emscripten-4.0.4",
+    "cacheFile": "emscripten-4.0.4.tar.gz",
+    "revision": "4.0.4",
+    "sha256": "02214fec16769fd5761585baf0038d08c3c1f33d2b7b179953c6fb7e4e04470e",
+    "format": "tar",
+    "url": "https://codeload.github.com/emscripten-core/emscripten/tar.gz/4.0.4"
+  },
+  {
+    "name": "guid-typescript",
+    "cacheFile": "guid-typescript-preferred.tar.gz",
+    "revision": "f110c1f42b5c784511e322531e97928c2d8ffb1c",
+    "version": "1.0.9",
+    "sha256": "62e69fe01184279d3c78e20ca30656c0c299c61e1813eadb71e2636d36806b7e",
+    "format": "tar",
+    "url": "https://codeload.github.com/NicolasDeveloper/guid-typescript/tar.gz/f110c1f42b5c784511e322531e97928c2d8ffb1c",
+    "verification": "Npm recorded gitHead unavailable. Compiled lib/guid.ts with TypeScript3.1.6, es3 CommonJS, output exactly matches npm1.0.9 JS after original CRLF conversion. Normalized sha256 71f9870d007cb6daf403c6d3a04b588a296911f1ae523296120b1920e7915e95."
+  },
+  {
+    "name": "platform",
+    "cacheFile": "platform-preferred.tar.gz",
+    "revision": "f048e72e08e6ca42baf54e010d1c6e75fd01b6c8",
+    "version": "1.3.6",
+    "sha256": "0977e5dc4c3e6d3311ec4cfa2777940aacf4452187b4859f8c81e4765a01e0ee",
+    "format": "tar",
+    "url": "https://codeload.github.com/bestiejs/platform.js/tar.gz/f048e72e08e6ca42baf54e010d1c6e75fd01b6c8"
+  },
+  {
+    "name": "protobufjs",
+    "cacheFile": "protobufjs-preferred.tar.gz",
+    "revision": "2f846fe09c1e4033bdfb63ea622a63dc7ae559db",
+    "version": "7.2.6",
+    "sha256": "90b15359055d15f2ca311e095f53c2cb32667ee69936ee1461cf0d6e7c0d56a6",
+    "format": "tar",
+    "url": "https://codeload.github.com/protobufjs/protobuf.js/tar.gz/2f846fe09c1e4033bdfb63ea622a63dc7ae559db"
+  },
+  {
+    "name": "flatbuffers",
+    "cacheFile": "flatbuffers-preferred.tar.gz",
+    "revision": "0312061985dbaaf6b068006383946ac6095f5b63",
+    "version": "25.1.24",
+    "sha256": "3dd7355f418a66ae4db1b2e0ca8522ee16c9246e28531777fbe5c9bfe2f3d8f6",
+    "format": "tar",
+    "url": "https://codeload.github.com/google/flatbuffers/tar.gz/0312061985dbaaf6b068006383946ac6095f5b63"
+  },
+  {
+    "name": "long",
+    "cacheFile": "long-preferred.tar.gz",
+    "revision": "cd84ddd10a963861652e59ac137c761e08b10e94",
+    "version": "5.2.3",
+    "sha256": "a6b8b46f0ceef0b6a220d599da5ca97fddb736529f8c29927c2a000306a9a300",
+    "format": "tar",
+    "url": "https://codeload.github.com/dcodeIO/long.js/tar.gz/cd84ddd10a963861652e59ac137c761e08b10e94"
+  },
+  {
+    "name": "@protobufjs_aspromise",
+    "cacheFile": "@protobufjs_aspromise-npm.tgz",
+    "version": "1.1.2",
+    "sha256": "0041878b8209f2fa4bcc5e0666355ebc96ff97f360c3054ffe83dbb78ee1c119",
+    "format": "tar",
+    "url": "https://registry.npmjs.org/@protobufjs/aspromise/-/aspromise-1.1.2.tgz",
+    "verification": "Handwritten preferred index.js, package build metadata and tests; not a minified/dist substitute."
+  },
+  {
+    "name": "@protobufjs_base64",
+    "cacheFile": "@protobufjs_base64-npm.tgz",
+    "version": "1.1.2",
+    "sha256": "d67e6ee6e1445512478cdfc34c12144f579bdd9f06529eef3ef8d88f84031a6a",
+    "format": "tar",
+    "url": "https://registry.npmjs.org/@protobufjs/base64/-/base64-1.1.2.tgz",
+    "verification": "Handwritten preferred index.js, package build metadata and tests; not a minified/dist substitute."
+  },
+  {
+    "name": "@protobufjs_codegen",
+    "cacheFile": "@protobufjs_codegen-npm.tgz",
+    "version": "2.0.4",
+    "sha256": "b4afad2d3dd8b1ed25f809ae2a0d953eadcd13ad320bf75fcbf3bda0b8039b47",
+    "format": "tar",
+    "url": "https://registry.npmjs.org/@protobufjs/codegen/-/codegen-2.0.4.tgz",
+    "verification": "Handwritten preferred index.js, package build metadata and tests; not a minified/dist substitute."
+  },
+  {
+    "name": "@protobufjs_eventemitter",
+    "cacheFile": "@protobufjs_eventemitter-npm.tgz",
+    "version": "1.1.0",
+    "sha256": "522952ed5ed2539ba38ca97ef4982e68b9c4bf6c926f151552c7ec4cc1587311",
+    "format": "tar",
+    "url": "https://registry.npmjs.org/@protobufjs/eventemitter/-/eventemitter-1.1.0.tgz",
+    "verification": "Handwritten preferred index.js, package build metadata and tests; not a minified/dist substitute."
+  },
+  {
+    "name": "@protobufjs_fetch",
+    "cacheFile": "@protobufjs_fetch-npm.tgz",
+    "version": "1.1.0",
+    "sha256": "6066b2a1c484ed5a56aef9052a2bdd6f5d46679bcaad181349f4561127ec926b",
+    "format": "tar",
+    "url": "https://registry.npmjs.org/@protobufjs/fetch/-/fetch-1.1.0.tgz",
+    "verification": "Handwritten preferred index.js, package build metadata and tests; not a minified/dist substitute."
+  },
+  {
+    "name": "@protobufjs_float",
+    "cacheFile": "@protobufjs_float-npm.tgz",
+    "version": "1.0.2",
+    "sha256": "20b3d612d53281b754602d52a8e6a6e09032169d5399e515f6f5e8b7d3de712d",
+    "format": "tar",
+    "url": "https://registry.npmjs.org/@protobufjs/float/-/float-1.0.2.tgz",
+    "verification": "Handwritten preferred index.js, package build metadata and tests; not a minified/dist substitute."
+  },
+  {
+    "name": "@protobufjs_inquire",
+    "cacheFile": "@protobufjs_inquire-npm.tgz",
+    "version": "1.1.0",
+    "sha256": "611cfb8149af2f11df3b7981947db81dfd6768231427bd24a457ca01752356b9",
+    "format": "tar",
+    "url": "https://registry.npmjs.org/@protobufjs/inquire/-/inquire-1.1.0.tgz",
+    "verification": "Handwritten preferred index.js, package build metadata and tests; not a minified/dist substitute."
+  },
+  {
+    "name": "@protobufjs_path",
+    "cacheFile": "@protobufjs_path-npm.tgz",
+    "version": "1.1.2",
+    "sha256": "cc364ee910173c36d5734535a2bb53b8e7e86d2d219f27218158ab3f3dca328c",
+    "format": "tar",
+    "url": "https://registry.npmjs.org/@protobufjs/path/-/path-1.1.2.tgz",
+    "verification": "Handwritten preferred index.js, package build metadata and tests; not a minified/dist substitute."
+  },
+  {
+    "name": "@protobufjs_pool",
+    "cacheFile": "@protobufjs_pool-npm.tgz",
+    "version": "1.1.0",
+    "sha256": "f721dbd27282d2c7d1c2bf1ae9f7a03cc3ef9cf882fe469a32c14d1dae732703",
+    "format": "tar",
+    "url": "https://registry.npmjs.org/@protobufjs/pool/-/pool-1.1.0.tgz",
+    "verification": "Handwritten preferred index.js, package build metadata and tests; not a minified/dist substitute."
+  },
+  {
+    "name": "@protobufjs_utf8",
+    "cacheFile": "@protobufjs_utf8-npm.tgz",
+    "version": "1.1.0",
+    "sha256": "1c606f4c0bcae5e966106f82ea810766db6b7c4a971ee7e78434398ad9230d24",
+    "format": "tar",
+    "url": "https://registry.npmjs.org/@protobufjs/utf8/-/utf8-1.1.0.tgz",
+    "verification": "Handwritten preferred index.js, package build metadata and tests; not a minified/dist substitute."
+  },
+  {
+    "name": "native-abseil_cpp",
+    "cacheFile": "native-abseil_cpp.zip",
+    "sha256": "95e90be7c3643e658670e0dd3c1b27092349c34b632c6e795686355f67eca89f",
+    "format": "zip",
+    "url": "https://github.com/abseil/abseil-cpp/archive/refs/tags/20240722.0.zip",
+    "upstreamExpectedSha1": "36ee53eb1466fb6e593fc5c286680de31f8a494a",
+    "observedSha1": "36ee53eb1466fb6e593fc5c286680de31f8a494a"
+  },
+  {
+    "name": "native-cxxopts",
+    "cacheFile": "native-cxxopts.zip",
+    "sha256": "57b5f012372d4c0e0a975b2e534e9af647cd20530fc72f73a75a61e05e0f997e",
+    "format": "zip",
+    "url": "https://github.com/jarro2783/cxxopts/archive/3c73d91c0b04e2b59462f0a741be8c07024c1bc0.zip",
+    "upstreamExpectedSha1": "6c6ca7f8480b26c8d00476e0e24b7184717fe4f0",
+    "observedSha1": "6c6ca7f8480b26c8d00476e0e24b7184717fe4f0"
+  },
+  {
+    "name": "native-date",
+    "cacheFile": "native-date.zip",
+    "sha256": "f4300b96f7a304d4ef9bf6e0fa3ded72159f7f2d0f605bdde3e030a0dba7cf9f",
+    "format": "zip",
+    "url": "https://github.com/HowardHinnant/date/archive/refs/tags/v3.0.1.zip",
+    "upstreamExpectedSha1": "2dac0c81dc54ebdd8f8d073a75c053b04b56e159",
+    "observedSha1": "2dac0c81dc54ebdd8f8d073a75c053b04b56e159"
+  },
+  {
+    "name": "native-dlpack",
+    "cacheFile": "native-dlpack.zip",
+    "sha256": "cb296b25f1ad5d52aa0efd7553e1aab17ab4561d1068b291fbe14d543d22f381",
+    "format": "zip",
+    "url": "https://github.com/dmlc/dlpack/archive/refs/tags/v0.6.zip",
+    "upstreamExpectedSha1": "4d565dd2e5b31321e5549591d78aa7f377173445",
+    "observedSha1": "4d565dd2e5b31321e5549591d78aa7f377173445"
+  },
+  {
+    "name": "native-eigen",
+    "cacheFile": "native-eigen.zip",
+    "sha256": "0a11e4f71593a1335cae38c4847bb9f36e1b700148c0d257abfca9df802115c2",
+    "format": "zip",
+    "url": "https://gitlab.com/libeigen/eigen/-/archive/1d8b82b0740839c0de7f1242a3585e3390ff5f33/eigen-1d8b82b0740839c0de7f1242a3585e3390ff5f33.zip",
+    "upstreamExpectedSha1": "5ea4d05e62d7f954a46b3213f9b2535bdd866803",
+    "observedSha1": "51982be81bbe52572b54180454df11a3ece9a934",
+    "verification": "Eigen GitLab container hash changed; all 1891 archive file Git blob hashes exactly matched pinned commit1d8b82b0740839c0de7f1242a3585e3390ff5f33, independently verified using git ls-tree."
+  },
+  {
+    "name": "native-flatbuffers",
+    "cacheFile": "native-flatbuffers.zip",
+    "sha256": "57bd580c0772fd1a726c34ab8bf05325293bc5f9c165060a898afa1feeeb95e1",
+    "format": "zip",
+    "url": "https://github.com/google/flatbuffers/archive/refs/tags/v23.5.26.zip",
+    "upstreamExpectedSha1": "59422c3b5e573dd192fead2834d25951f1c1670c",
+    "observedSha1": "59422c3b5e573dd192fead2834d25951f1c1670c"
+  },
+  {
+    "name": "native-fp16",
+    "cacheFile": "native-fp16.zip",
+    "sha256": "e66e65515fa09927b348d3d584c68be4215cfe664100d01c9dbc7655a5716d70",
+    "format": "zip",
+    "url": "https://github.com/Maratyszcza/FP16/archive/0a92994d729ff76a58f692d3028ca1b64b145d91.zip",
+    "upstreamExpectedSha1": "b985f6985a05a1c03ff1bb71190f66d8f98a1494",
+    "observedSha1": "b985f6985a05a1c03ff1bb71190f66d8f98a1494"
+  },
+  {
+    "name": "native-fxdiv",
+    "cacheFile": "native-fxdiv.zip",
+    "sha256": "3d7b0e9c4c658a84376a1086126be02f9b7f753caa95e009d9ac38d11da444db",
+    "format": "zip",
+    "url": "https://github.com/Maratyszcza/FXdiv/archive/63058eff77e11aa15bf531df5dd34395ec3017c8.zip",
+    "upstreamExpectedSha1": "a5658f4036402dbca7cebee32be57fb8149811e1",
+    "observedSha1": "a5658f4036402dbca7cebee32be57fb8149811e1"
+  },
+  {
+    "name": "native-google_benchmark",
+    "cacheFile": "native-google_benchmark.zip",
+    "sha256": "39f57865cdbfa06f02ae91ea76465246046cc47d5908aa5a3abeb9026fb73dcc",
+    "format": "zip",
+    "url": "https://github.com/google/benchmark/archive/refs/tags/v1.8.5.zip",
+    "upstreamExpectedSha1": "cd47d3d272faf353600c8cc2fdec2b52d6f69177",
+    "observedSha1": "cd47d3d272faf353600c8cc2fdec2b52d6f69177"
+  },
+  {
+    "name": "native-googletest",
+    "cacheFile": "native-googletest.zip",
+    "sha256": "ed98258b96c6dc8af33eeb03c8d94a05b185866604382e12980f576595bdc509",
+    "format": "zip",
+    "url": "https://github.com/google/googletest/archive/refs/tags/v1.15.0.zip",
+    "upstreamExpectedSha1": "9d2d0af8d77ac726ea55d44a8fa727ec98311349",
+    "observedSha1": "9d2d0af8d77ac726ea55d44a8fa727ec98311349"
+  },
+  {
+    "name": "native-googlexnnpack",
+    "cacheFile": "native-googlexnnpack.zip",
+    "sha256": "7aeeb8c6e134e0866655bbb7a0387166eba36bcd436a0c3e0f4c5286426b785f",
+    "format": "zip",
+    "url": "https://github.com/google/XNNPACK/archive/fe98e0b93565382648129271381c14d6205255e3.zip",
+    "upstreamExpectedSha1": "14f61dcf17cec2cde34ba2dcf61d6f24bf6059f3",
+    "observedSha1": "14f61dcf17cec2cde34ba2dcf61d6f24bf6059f3"
+  },
+  {
+    "name": "native-json",
+    "cacheFile": "native-json.zip",
+    "sha256": "04022b05d806eb5ff73023c280b68697d12b93e1b7267a0b22a1a39ec7578069",
+    "format": "zip",
+    "url": "https://github.com/nlohmann/json/archive/refs/tags/v3.11.3.zip",
+    "upstreamExpectedSha1": "5e88795165cc8590138d1f47ce94ee567b85b4d6",
+    "observedSha1": "5e88795165cc8590138d1f47ce94ee567b85b4d6"
+  },
+  {
+    "name": "native-microsoft_gsl",
+    "cacheFile": "native-microsoft_gsl.zip",
+    "sha256": "eb91fcb10a6aa5ccb1d224e07a56c8ecffe9a1bb601fa1848276ec46a2200bfb",
+    "format": "zip",
+    "url": "https://github.com/microsoft/GSL/archive/refs/tags/v4.0.0.zip",
+    "upstreamExpectedSha1": "cf368104cd22a87b4dd0c80228919bb2df3e2a14",
+    "observedSha1": "cf368104cd22a87b4dd0c80228919bb2df3e2a14"
+  },
+  {
+    "name": "native-mimalloc",
+    "cacheFile": "native-mimalloc.zip",
+    "sha256": "23b1bffb2eff57b1e3cb8edc9410d448db2bb43400206a151e107dcabcad773a",
+    "format": "zip",
+    "url": "https://github.com/microsoft/mimalloc/archive/refs/tags/v2.1.1.zip",
+    "upstreamExpectedSha1": "d5ee7d34223d0567892db5179849939c8769dc41",
+    "observedSha1": "d5ee7d34223d0567892db5179849939c8769dc41"
+  },
+  {
+    "name": "native-mp11",
+    "cacheFile": "native-mp11.zip",
+    "sha256": "81431bdc44c439a324e02c07ed067f8f556419fd86f2d8b486ff568df6aac899",
+    "format": "zip",
+    "url": "https://github.com/boostorg/mp11/archive/refs/tags/boost-1.82.0.zip",
+    "upstreamExpectedSha1": "9bc9e01dffb64d9e0773b2e44d2f22c51aace063",
+    "observedSha1": "9bc9e01dffb64d9e0773b2e44d2f22c51aace063"
+  },
+  {
+    "name": "native-onnx",
+    "cacheFile": "native-onnx.zip",
+    "sha256": "54ab63aec98693c8a021aa708aad046183a0d166808733429fde7f644c84d637",
+    "format": "zip",
+    "url": "https://github.com/onnx/onnx/archive/refs/tags/v1.17.0.zip",
+    "upstreamExpectedSha1": "13a60ac5217c104139ce0fd024f48628e7bcf5bc",
+    "observedSha1": "13a60ac5217c104139ce0fd024f48628e7bcf5bc"
+  },
+  {
+    "name": "native-protobuf",
+    "cacheFile": "native-protobuf.zip",
+    "sha256": "6a31b662deaeb0ac35e6287bda2f3369b19836e6c9f8828d4da444346f420298",
+    "format": "zip",
+    "url": "https://github.com/protocolbuffers/protobuf/archive/refs/tags/v21.12.zip",
+    "upstreamExpectedSha1": "7cf2733949036c7d52fda017badcab093fe73bfa",
+    "observedSha1": "7cf2733949036c7d52fda017badcab093fe73bfa"
+  },
+  {
+    "name": "native-psimd",
+    "cacheFile": "native-psimd.zip",
+    "sha256": "dc615342bcbe51ca885323e51b68b90ed9bb9fa7df0f4419dbfa0297d5e837b7",
+    "format": "zip",
+    "url": "https://github.com/Maratyszcza/psimd/archive/072586a71b55b7f8c584153d223e95687148a900.zip",
+    "upstreamExpectedSha1": "1f5454b01f06f9656b77e4a5e2e31d7422487013",
+    "observedSha1": "1f5454b01f06f9656b77e4a5e2e31d7422487013"
+  },
+  {
+    "name": "native-pthreadpool",
+    "cacheFile": "native-pthreadpool.zip",
+    "sha256": "6d373fa7e2b899605fc3b6e72171a71bccbaf9d4d596b7f514535c4ffb966b3b",
+    "format": "zip",
+    "url": "https://github.com/google/pthreadpool/archive/4e80ca24521aa0fb3a746f9ea9c3eaa20e9afbb0.zip",
+    "upstreamExpectedSha1": "bd4ea65c8292801e9555b527a0ecbb2e0092c917",
+    "observedSha1": "bd4ea65c8292801e9555b527a0ecbb2e0092c917"
+  },
+  {
+    "name": "native-pytorch_cpuinfo",
+    "cacheFile": "native-pytorch_cpuinfo.zip",
+    "sha256": "4bf314b3f04db2fd984fef38a7e278e702b74297ef0af592b73296edba02b9d4",
+    "format": "zip",
+    "url": "https://github.com/pytorch/cpuinfo/archive/8a1772a0c5c447df2d18edf33ec4603a8c9c04a6.zip",
+    "upstreamExpectedSha1": "85bf8a60dae026b99b6ccd78606c85ed83bfb2cd",
+    "observedSha1": "85bf8a60dae026b99b6ccd78606c85ed83bfb2cd"
+  },
+  {
+    "name": "native-re2",
+    "cacheFile": "native-re2.zip",
+    "sha256": "a835fe55fbdcd8e80f38584ab22d0840662c67f2feb36bd679402da9641dc71e",
+    "format": "zip",
+    "url": "https://github.com/google/re2/archive/refs/tags/2024-07-02.zip",
+    "upstreamExpectedSha1": "646e1728269cde7fcef990bf4a8e87b047882e88",
+    "observedSha1": "646e1728269cde7fcef990bf4a8e87b047882e88"
+  },
+  {
+    "name": "native-safeint",
+    "cacheFile": "native-safeint.zip",
+    "sha256": "3ffbd9a2fdff45da77da3e7269e9aa512ea43bed5c38ce8fd8f3d1068a032c3f",
+    "format": "zip",
+    "url": "https://github.com/dcleblanc/SafeInt/archive/refs/tags/3.0.28.zip",
+    "upstreamExpectedSha1": "23f252040ff6cb9f1fd18575b32fa8fb5928daac",
+    "observedSha1": "23f252040ff6cb9f1fd18575b32fa8fb5928daac"
+  },
+  {
+    "name": "native-extensions",
+    "cacheFile": "native-extensions.zip",
+    "sha256": "d0af92533f33344ef7291d18b2cb3300d512650e710f2eaff540519a6a6a2d65",
+    "format": "zip",
+    "url": "https://github.com/microsoft/onnxruntime-extensions/archive/c24b7bab0c12f53da76d0c31b03b9f0f8ec8f3b4.zip",
+    "upstreamExpectedSha1": "239063aee4946a9af147b473a4c3da78ba7413b4",
+    "observedSha1": "239063aee4946a9af147b473a4c3da78ba7413b4"
+  },
+  {
+    "name": "espeak-ng",
+    "cacheFile": "espeak-ng.tar.gz",
+    "revision": "4870adfa25b1a32b4361592f1be8a40337c58d6c",
+    "sha256": "cd83f84c4e495f281ac14e919aecf2834306ec1ea1b498de8ef6000f3a0f90de",
+    "format": "tar",
+    "url": "https://codeload.github.com/espeak-ng/espeak-ng/tar.gz/4870adfa25b1a32b4361592f1be8a40337c58d6c"
+  },
+  {
+    "name": "sonic",
+    "cacheFile": "sonic.tar.gz",
+    "revision": "fbf75c3d6d846bad3bb3d456cbc5d07d9fd8c104",
+    "sha256": "715827b5a39b79e56e44397d7b845910df996d4cca74777b3b61629b1ddc98c1",
+    "format": "tar",
+    "url": "https://codeload.github.com/waywardgeek/sonic/tar.gz/fbf75c3d6d846bad3bb3d456cbc5d07d9fd8c104"
+  }
+]

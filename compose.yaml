@@ -1,0 +1,38 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      SAYBOARD_ORIGIN: https://${SAYBOARD_DOMAIN:?Set SAYBOARD_DOMAIN in .env}
+      SAYBOARD_AUTH_ENABLED: ${SAYBOARD_AUTH_ENABLED:-0}
+      SAYBOARD_STORAGE: sqlite
+      SAYBOARD_DATABASE_PATH: /data/sayboard.sqlite
+    volumes:
+      - boards:/data
+    ports:
+      - "80:80"
+      - "443:443"
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('node:http').get({host:'127.0.0.1',port:8080,path:'/healthz',headers:{Host:new URL(process.env.SAYBOARD_ORIGIN).host}},r=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  proxy:
+    image: caddy:2
+    network_mode: service:app
+    depends_on:
+      app:
+        condition: service_healthy
+        restart: true
+    restart: unless-stopped
+    environment:
+      SAYBOARD_DOMAIN: ${SAYBOARD_DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - certificates:/data
+      - proxy-config:/config
+volumes:
+  boards:
+  certificates:
+  proxy-config:

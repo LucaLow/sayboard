@@ -1,0 +1,12 @@
+.git
+.env*
+.vercel
+node_modules
+dist
+server-dist
+data
+backend/.data
+test-results
+playwright-report
+public/source
+**/__pycache__

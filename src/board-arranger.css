@@ -1,0 +1,120 @@
+.arrange-toolbar,
+.arrange-actions,
+.arrange-create {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.arrange-toolbar h1 {
+  flex: 1 0 100%;
+  margin: 0;
+  font-size: 24px;
+}
+.arrange-actions label,
+.arrange-create label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.arrange-actions select,
+.arrange-create input {
+  max-width: 100%;
+  min-height: 44px;
+}
+.arrange-actions label {
+  flex: 1 1 210px;
+}
+.arrange-feedback {
+  min-height: 48px;
+  margin: 0 0 12px;
+}
+.arrange-slot {
+  border: 2px solid #53665b;
+  border-radius: 18px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  background: var(--tile-bg, #fff);
+}
+.arrange-slot .arrange-select {
+  border: 0;
+  border-radius: 10px;
+  width: 100%;
+  flex: 1;
+  background: transparent;
+  padding: 12px 4px;
+  min-height: 120px;
+  font-size: 20px;
+}
+.arrange-slot-number {
+  font-size: 14px;
+  font-weight: 500;
+}
+.arrange-slot .button {
+  width: 100%;
+  padding: 8px 4px;
+  min-height: 44px;
+  white-space: normal;
+}
+.arrange-select[aria-pressed="true"] {
+  outline: 4px solid #155dc4;
+  outline-offset: -4px;
+}
+.arrange-handle {
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+.arrange-dragging .arrange-handle {
+  cursor: grabbing;
+}
+.arrange-drop-active {
+  outline: 5px solid #155dc4;
+  outline-offset: -5px;
+  box-shadow: inset 0 0 0 8px #fff;
+}
+.arrange-home-drop {
+  margin-bottom: 16px;
+}
+.arrange-empty {
+  flex: 1;
+}
+[data-theme="dark"] .arrange-slot {
+  border-color: #adcabc;
+  background: #20382e;
+}
+[data-theme="dark"] .arrange-select[aria-pressed="true"],
+[data-theme="dark"] .arrange-drop-active {
+  outline-color: #9cc9ff;
+}
+@media (max-width: 540px) {
+  .arrange-actions,
+  .arrange-create {
+    gap: 8px;
+  }
+  .arrange-create label {
+    flex: 1 1 180px;
+  }
+  .arrange-toolbar .button {
+    flex: 1 1 130px;
+  }
+}
+
+.arrange-actions[hidden] {
+  display: none;
+}
+.arrange-category-creator {
+  margin-bottom: 16px;
+}
+.arrange-category-creator summary {
+  width: fit-content;
+  cursor: pointer;
+}
+.arrange-category-creator form {
+  margin-top: 12px;
+}
