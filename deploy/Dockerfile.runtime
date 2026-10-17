@@ -1,0 +1,10 @@
+# Build the browser and server first on a development or CI machine.
+# scripts/package-vps.mjs supplies only dist/ and server-dist/ as the context.
+FROM node:24-bookworm-slim
+ENV NODE_ENV=production SAYBOARD_SERVER_ENTRY=1 SAYBOARD_PORT=8080 SAYBOARD_STATIC_DIR=/app/dist SAYBOARD_DATA_DIR=/data
+WORKDIR /app
+RUN mkdir /data && chown node:node /data
+COPY --chown=node:node dist ./dist
+COPY --chown=node:node server-dist ./server-dist
+USER node
+CMD ["node", "server-dist/server.cjs"]

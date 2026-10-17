@@ -116,7 +116,19 @@ async function login(username = "caregiver") {
 
 describe("hosted HTTPS boundary", () => {
   it("requires explicit complete production configuration and exact HTTPS domains", () => {
-    expect(hostedConfig(env())).toEqual({ kind: "hosted", origin });
+    expect(hostedConfig(env())).toEqual({
+      kind: "hosted",
+      origin,
+      passwordConcurrency: 2,
+    });
+    expect(
+      hostedConfig({ ...env(), SAYBOARD_PASSWORD_CONCURRENCY: "1" })
+        .passwordConcurrency,
+    ).toBe(1);
+    for (const invalid of ["0", "3", "", "1.5"])
+      expect(() =>
+        hostedConfig({ ...env(), SAYBOARD_PASSWORD_CONCURRENCY: invalid }),
+      ).toThrow();
     for (const variable of Object.keys(env())) {
       const incomplete: NodeJS.ProcessEnv = env();
       delete incomplete[variable];
@@ -141,7 +153,12 @@ describe("hosted HTTPS boundary", () => {
   it("fails closed without configuration before touching storage", async () => {
     const getStore = vi.fn(async () => store);
     const disabled = createHostedHandler({}, getStore);
-    for (const path of ["/api/auth/login", "/api/auth/session", "/api/auth/logout", "/api/board"]) {
+    for (const path of [
+      "/api/auth/login",
+      "/api/auth/session",
+      "/api/auth/logout",
+      "/api/board",
+    ]) {
       const response = await disabled(request(path));
       expect(response.status).toBe(503);
       expect(response.headers.get("set-cookie")).toBeNull();
@@ -186,9 +203,18 @@ describe("hosted HTTPS boundary", () => {
     for (const value of ["", "unknown", "203.0.113.10, 203.0.113.11"])
       expect((await guarded(request(), value)).status).toBe(503);
     expect(getStore).not.toHaveBeenCalled();
-    const response = await guarded(request("/api/auth/login", "POST", { username: "caregiver", password }, { "x-forwarded-for": "198.51.100.44" }));
+    const response = await guarded(
+      request(
+        "/api/auth/login",
+        "POST",
+        { username: "caregiver", password },
+        { "x-forwarded-for": "198.51.100.44" },
+      ),
+    );
     expect(response.status).toBe(200);
-    const keys = (await db.query<{ key: string }>("SELECT key FROM sayboard.login_limits")).rows;
+    const keys = (
+      await db.query<{ key: string }>("SELECT key FROM sayboard.login_limits")
+    ).rows;
     expect(keys).toEqual([{ key: tokenHash("sayboard-peer:203.0.113.10") }]);
   });
   it("issues separate Secure host cookie, validates session, revokes logout and expires", async () => {

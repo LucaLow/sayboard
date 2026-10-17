@@ -1,0 +1,26 @@
+# Use with compose.yaml after loading a prebuilt linux/amd64 image.
+# No builds or package installation happen on the small VPS.
+services:
+  app:
+    build: !reset null
+    image: ${SAYBOARD_IMAGE:?Set SAYBOARD_IMAGE to the reviewed release tag}
+    environment:
+      NODE_OPTIONS: --max-old-space-size=96
+      SAYBOARD_PASSWORD_CONCURRENCY: "1"
+    mem_limit: 320m
+    memswap_limit: 512m
+    pids_limit: 128
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"
+  proxy:
+    mem_limit: 64m
+    memswap_limit: 128m
+    pids_limit: 64
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"

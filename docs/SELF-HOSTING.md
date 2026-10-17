@@ -10,7 +10,7 @@ Use a Linux VPS with Docker Engine and Docker Compose, persistent disk space and
 cp .env.example .env
 ```
 
-Set `SAYBOARD_DOMAIN` to your hostname. Leave `SAYBOARD_AUTH_ENABLED=0` for the free app, or set it to `1` for account backups. Then run:
+Set `SAYBOARD_DOMAIN` to your hostname. Leave `SAYBOARD_AUTH_ENABLED=0` for the free app, or set it to `1` for account backups and the teacher dashboard. Then run:
 
 ```sh
 docker compose up -d --build
@@ -39,6 +39,42 @@ To reset an existing account, replace `create teacher` with `reset-password teac
 
 Open the site, enter caregiver mode, expand **Backup and transfer**, and sign in. Choose explicitly when to save or load a copy. Saving an account copy does not replace the working local board. A loaded copy first becomes a caregiver draft; **Save board** applies it to the device.
 
+The teacher dashboard is `/teacher.html`. Its [classroom workflow](TEACHER-PILOT.md) uses the same adult account, separate classroom drafts and scoped device links. Classroom storage requires SQLite.
+
+To permanently delete one adult account and all its live personal backups, sessions, classrooms, profiles, versions and device links, use `docker compose exec -T app node server-dist/manage.cjs delete teacher --confirm-delete=teacher`. This does not delete copies already on devices or retained encrypted backups.
+
+## A 512 MB VPS
+
+Build on a separate computer with Node 24, npm, Python 3 and Docker. The small server only loads an image and runs it. After the ordinary checks:
+
+```sh
+npm run build
+npm run build:server
+node scripts/package-vps.mjs sayboard:RELEASE /tmp/sayboard-RELEASE.tar
+```
+
+The packager defaults to `linux/amd64`. Set `SAYBOARD_VPS_PLATFORM=linux/arm64` for an ARM server. It copies only `dist/` and `server-dist/` into a temporary Docker context and writes a SHA-256 manifest beside the archive. Transfer both to the server, verify the archive's SHA-256 against the manifest, then load it with `docker load -i /tmp/sayboard-RELEASE.tar`.
+
+On a new dedicated Ubuntu 24.04 server, `deploy/bootstrap-small-vps.sh` configures Docker, firewall ports 22/80/443, automatic security updates and 1 GB of swap. Review it before running as root. Provision SSH keys first and verify a separate administrative login before disabling root access. Do not use this bootstrap on a shared server.
+
+Copy `compose.yaml`, `deploy/compose.small.yaml` and `deploy/Caddyfile` to `/srv/sayboard`. Set these values in `/srv/sayboard/.env`, readable only by the operator:
+
+```text
+SAYBOARD_DOMAIN=boards.example.org
+SAYBOARD_AUTH_ENABLED=1
+SAYBOARD_IMAGE=sayboard:RELEASE
+```
+
+Use Docker Compose 2.24.4 or later for the overlay's `!reset` tag:
+
+```sh
+cd /srv/sayboard
+docker compose -p sayboard -f compose.yaml -f deploy/compose.small.yaml config --quiet
+docker compose -p sayboard -f compose.yaml -f deploy/compose.small.yaml up -d --no-build --pull never --wait
+```
+
+Include both files and `-p sayboard` in all later maintenance commands on this setup. The overlay limits app memory to 320 MiB and proxy memory to 64 MiB, and permits one password hash at a time without weakening scrypt. Concurrent sign-ins may receive HTTP 429 and should retry. This is a small pilot configuration; measure memory, disk space and latency before adding more classrooms. Do not build on the 512 MB server.
+
 ## Back up and restore
 
 Create a consistent SQLite snapshot while the server is running:
@@ -54,6 +90,14 @@ Create the destination backup directory on the host first and restrict access to
 Also back up `/data/source` and Caddy's certificate volume. Source archives are public software, but their immutable URLs must remain available across upgrades. To restore a database, stop both services, replace the SQLite file from a verified snapshot, remove obsolete WAL and SHM companions only while the server is stopped, and start both services. Test restore with demonstration accounts before relying on the backup.
 
 When moving an already published instance, copy its retained source tree into the new `/data/source` before serving the replacement. Independent new installations do not fetch the official website. Optional build-time `SAYBOARD_SOURCE_ORIGIN` and `SAYBOARD_SOURCE_POLICY` can import checked previous archives from an existing HTTPS origin during migration.
+
+### Daily encrypted database backups on the small VPS
+
+Install `age` on the host. Generate an age identity on a separate trusted computer, keep its private identity off-server, and put only its public `age1...` recipient in `/etc/sayboard/backup-recipient`. Restrict that directory and file to the operator. Copy `deploy/backup-sqlite.sh` into `/srv/sayboard/deploy/` and make it executable. Install the service and timer from `deploy/` into `/etc/systemd/system/`, then run `systemctl daemon-reload` and `systemctl enable --now sayboard-backup.timer`.
+
+Run `systemctl start sayboard-backup.service` to test immediately. The script takes a consistent SQLite snapshot, checks integrity, encrypts it to the off-server recipient and removes temporary plaintext. Encrypted files go to `/srv/sayboard/backups/` with owner-only permissions. A lock prevents overlapping jobs. The timer runs daily at 03:00 UTC with up to 15 minutes of jitter. Files older than seven complete days are removed when a new backup succeeds.
+
+Copy encrypted snapshots off-server regularly. The timer alone cannot recover from loss of the VPS. Decrypt a copy on the trusted computer using `age -d -i IDENTITY -o restore.sqlite SNAPSHOT.sqlite.age`, verify SQLite integrity, and test the stopped-server restore procedure above. Protect and remove decrypted test copies when finished. Back up the public retained source tree separately so source URLs survive a complete server loss. This setup does not enable paid provider backups or a second storage service.
 
 ## Run without Docker
 

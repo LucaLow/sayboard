@@ -6,7 +6,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium, request } from "playwright";
+import { chromium, webkit, request } from "playwright";
+import { checkClassroomFlow } from "../tests/classroom-flow.browser.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const temporary = await mkdtemp(join(tmpdir(), "sayboard-vps-check-"));
@@ -36,7 +37,11 @@ function command(program, args, input, environment = {}) {
     child.once("close", (code) =>
       code === 0
         ? resolve(output)
-        : reject(new Error(`${program} failed: ${output.slice(-1200)}`)),
+        : reject(
+            new Error(
+              `${program} ${args[0] ?? ""} failed (${code}): ${output.slice(-1200)}`,
+            ),
+          ),
     );
     child.stdin.end(input);
   });
@@ -65,12 +70,20 @@ const stack = JSON.parse(
       project,
       "-f",
       join(root, "compose.yaml"),
+      ...(process.env.SAYBOARD_SMALL_VPS === "1"
+        ? ["-f", join(root, "deploy/compose.small.yaml")]
+        : []),
       "config",
       "--format",
       "json",
     ],
     undefined,
-    { SAYBOARD_DOMAIN: `localhost:${port}`, SAYBOARD_AUTH_ENABLED: "1" },
+    {
+      SAYBOARD_DOMAIN: `localhost:${port}`,
+      SAYBOARD_AUTH_ENABLED: "1",
+      SAYBOARD_IMAGE:
+        process.env.SAYBOARD_TEST_IMAGE ?? "sayboard:publication-review",
+    },
   ),
 );
 delete stack.services.app.build;
@@ -259,6 +272,27 @@ try {
     localPersistenceAfterRestore: true,
     noSessionTokensInLocalStorage: true,
   };
+  report.classrooms = [];
+  for (const [engine, type] of [
+    ["chromium", chromium],
+    ["webkit", webkit],
+  ]) {
+    const classroomBrowser = await type.launch();
+    try {
+      report.classrooms.push(
+        await checkClassroomFlow({
+          browser: classroomBrowser,
+          origin,
+          username: "teacher",
+          password,
+          engine,
+          artifactDirectory: join(root, "test-results/publication/classrooms"),
+        }),
+      );
+    } finally {
+      await classroomBrowser.close();
+    }
+  }
   await compose("restart", "app");
   await compose("restart", "proxy");
   await compose("up", "-d", "--force-recreate");

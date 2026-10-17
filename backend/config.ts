@@ -7,7 +7,11 @@ export type LocalConfig = {
   databasePath: string;
 };
 
-export type HostedConfig = { kind: "hosted"; origin: string };
+export type HostedConfig = {
+  kind: "hosted";
+  origin: string;
+  passwordConcurrency?: 1 | 2;
+};
 export type ApiConfig = LocalConfig | HostedConfig;
 
 export function hostedConfig(env: NodeJS.ProcessEnv): HostedConfig {
@@ -39,7 +43,14 @@ export function hostedConfig(env: NodeJS.ProcessEnv): HostedConfig {
     url.hostname.endsWith(".")
   )
     throw new Error("Hosted origin must be an exact HTTPS domain origin");
-  return { kind: "hosted", origin: url.origin };
+  const passwordConcurrency = env.SAYBOARD_PASSWORD_CONCURRENCY ?? "2";
+  if (passwordConcurrency !== "1" && passwordConcurrency !== "2")
+    throw new Error("Password concurrency must be 1 or 2");
+  return {
+    kind: "hosted",
+    origin: url.origin,
+    passwordConcurrency: passwordConcurrency === "1" ? 1 : 2,
+  };
 }
 
 export function localConfig(env: NodeJS.ProcessEnv): LocalConfig {

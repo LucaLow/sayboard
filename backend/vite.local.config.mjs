@@ -1,5 +1,7 @@
 // Optional local API proxy. Invoke explicitly; the static build stays unchanged.
-export default {
+import { mergeConfig } from "vite";
+import base from "../vite.config.ts";
+export default mergeConfig(base, {
   server: {
     host: "127.0.0.1",
     port: 5188,
@@ -12,4 +14,4 @@ export default {
       },
     },
   },
-};
+});

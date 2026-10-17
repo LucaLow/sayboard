@@ -1,0 +1,9 @@
+[Unit]
+Description=Encrypted Sayboard SQLite snapshot
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/srv/sayboard/deploy/backup-sqlite.sh /srv/sayboard /etc/sayboard/backup-recipient

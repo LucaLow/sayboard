@@ -179,7 +179,7 @@ def frontend_entries():
     for base in ["src", "scripts/speech/espeak", "scripts/speech/release"]:
         paths.extend(p for p in (ROOT / base).rglob("*") if p.is_file() and "__pycache__" not in p.parts
                      and p.name not in {"proposal-manifest.json", "retention-policy.json"})
-    paths.extend(ROOT / p for p in ["index.html", "package.json", "package-lock.json", "tsconfig.json", "vite.config.ts", "eslint.config.js", "vitest.config.ts", "CATALOGUE-LICENSE.txt", "ICON-LICENSE.txt"])
+    paths.extend(ROOT / p for p in ["index.html", "teacher.html", "package.json", "package-lock.json", "tsconfig.json", "vite.config.ts", "eslint.config.js", "vitest.config.ts", "CATALOGUE-LICENSE.txt", "ICON-LICENSE.txt"])
     paths.extend(p for p in (ROOT / "public").iterdir() if p.is_file())
     paths.extend(ROOT / p for p in ["LICENSE", "LICENSING.md", "LICENSE-OWNER-MIT", "LICENSE-MIT", "COPYING", "THIRD-PARTY-NOTICES.txt", "THIRD-PARTY-NOTICES.md"] if (ROOT / p).exists())
     # Include only the isolated frontend speech harness/tests, no account/backend tests.

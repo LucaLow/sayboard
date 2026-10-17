@@ -7,9 +7,13 @@ import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { SqliteStore } from "../store.ts";
 import { PostgresStore } from "../postgres-store.ts";
-import { createApi, MAX_BODY_BYTES } from "../api.ts";
+import { createApi } from "../api.ts";
+import { MAX_BODY_BYTES } from "../api-http.ts";
 import { createHostedHandler as rawHostedHandler } from "../hosted.ts";
-function createHostedHandler(...args: Parameters<typeof rawHostedHandler>) { const handler = rawHostedHandler(...args); return (request: Request) => handler(request, "203.0.113.10"); }
+function createHostedHandler(...args: Parameters<typeof rawHostedHandler>) {
+  const handler = rawHostedHandler(...args);
+  return (request: Request) => handler(request, "203.0.113.10");
+}
 import { localConfig } from "../config.ts";
 import { hashPassword, newToken, tokenHash, csrfToken } from "../password.ts";
 import { parseBoard, starterBoard } from "../../src/board.ts";

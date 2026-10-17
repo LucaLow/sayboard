@@ -25,11 +25,12 @@ Public source code does not make customer data public. Production records, crede
 | Local boards, editing, speech, import and export | Implemented; see [device and offline limits](SELF-HOSTING.md#serve-only-the-static-app) |
 | Standalone account backup | Implemented with SQLite, operator-created accounts, explicit save/load and revision checks |
 | Optional PostgreSQL adapter | Implemented against the same account storage contract |
-| Classroom dashboard, organisations and permissions | Planned |
-| Device pairing and published board updates | Planned |
+| Classroom dashboard and ownership | Implemented for one adult owner per classroom, with learner aliases and SQLite storage |
+| Device pairing and published board updates | Implemented with single-use codes, scoped device credentials, manual apply and version restore |
+| Shared school organisations and delegated roles | Planned |
 | Subscriptions and billing | Planned; prices undecided |
 
-The current account API stores one board copy per adult account. It is not a classroom or multi-board model. Add classroom ownership explicitly rather than granting a teacher access to unrelated personal backups.
+Personal backups store one board copy per adult account. Classroom profiles, drafts, versions and device links are separate records. Each classroom belongs to one adult account; it cannot access another adult's personal backup or classrooms. See [the implemented boundaries](ARCHITECTURE.md#classroom-boundary).
 
 ## First teacher pilot
 
@@ -43,9 +44,9 @@ Prove this workflow before adding billing:
 
 Keep drafts separate from published versions. An edit on the teacher dashboard must not rearrange tiles while the person is communicating. Store no history of what the student says. Record publication and permission changes without copying vocabulary into logs.
 
-## Proposed data ownership
+## Future school workspaces
 
-This is a design for the next implementation milestone, not an applied database schema.
+The pilot implements adult-owned classrooms, learner profiles, drafts, versions and device links. The following organisation and membership model is a future extension, not an applied schema. Add it when the pilot demonstrates a need for teachers to collaborate.
 
 | Record | Owns |
 | --- | --- |
@@ -57,7 +58,7 @@ This is a design for the next implementation milestone, not an applied database 
 | Device link | Scoped read access to one assigned profile, with revocation and expiring pairing credentials |
 | Subscription | Official hosted-service entitlement for the organisation, separate from board ownership and membership |
 
-The database or server enforces organisation membership on every read and write. A teacher in one organisation cannot access another organisation's boards. Device credentials only read assigned published versions. They cannot list students, edit boards or manage billing.
+An organisation extension must enforce membership on every read and write. The pilot already enforces classroom ownership on every operation. Device credentials only read assigned published versions. They cannot list students, edit boards or manage billing.
 
 Keep subscription checks at hosted-service boundaries. Self-hosted deployments use the same classroom code without an official billing account. The local app does not know whether a classroom subscription is active.
 
@@ -71,4 +72,4 @@ Keep subscription checks at hosted-service boundaries. Self-hosted deployments u
 6. Run a teacher pilot. Agree the personal-backup policy and a sustainable classroom price using actual operating and support costs.
 7. Add hosted subscriptions, cancellation behaviour, data retention, privacy terms and support arrangements before taking payments.
 
-The first step is repository preparation. It does not make the classroom service production-ready. The next product input is a teacher willing to test with demonstration boards. An official VPS deployment needs a server and a hostname pointing at it. Email is not required for operator-provisioned accounts.
+Repository publication and classroom implementation are complete. The next milestone is the teacher pilot, using [the documented workflow](TEACHER-PILOT.md). The official deployment uses a standalone VPS at `classroom.sayboard.org`, with the free static app at `sayboard.org`. Email is not required for operator-provisioned accounts.

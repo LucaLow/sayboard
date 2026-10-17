@@ -4,11 +4,13 @@ import { dirname } from "node:path";
 import { parseBoard, serializeBoard, type Board } from "../src/board.js";
 import { randomUUID } from "node:crypto";
 import { hashPassword } from "./password.js";
+import { SqliteClassrooms } from "./classroom-store.js";
 
 import type { Account, Session, SavedBoard, Store } from "./store-contract.js";
 
 export class SqliteStore implements Store {
   private db: DatabaseSync;
+  readonly classrooms: SqliteClassrooms;
   constructor(path: string) {
     if (path !== ":memory:")
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
@@ -36,6 +38,7 @@ export class SqliteStore implements Store {
         key TEXT PRIMARY KEY, count INTEGER NOT NULL, expires_at INTEGER NOT NULL
       ) STRICT;
     `);
+    this.classrooms = new SqliteClassrooms(this.db);
   }
   close() {
     this.db.close();
@@ -44,14 +47,30 @@ export class SqliteStore implements Store {
     await backup(this.db, path);
     chmodSync(path, 0o600);
   }
+  deleteAccount(username: string): void {
+    // Foreign keys also revoke sessions, device links and classroom records.
+    const result = this.db
+      .prepare("DELETE FROM accounts WHERE username = ? AND local_only = 0")
+      .run(username);
+    if (result.changes !== 1) throw new Error("Account not found");
+  }
   async resetPassword(username: string, password: string): Promise<void> {
     const hash = await hashPassword(password);
     this.db.exec("BEGIN IMMEDIATE");
     try {
-      const account = this.db.prepare("SELECT id FROM accounts WHERE username = ? AND local_only = 0").get(username);
-      if (!account || typeof account.id !== "string") throw new Error("Account not found");
-      this.db.prepare("UPDATE accounts SET password_hash = ? WHERE id = ?").run(hash, account.id);
-      this.db.prepare("DELETE FROM sessions WHERE account_id = ?").run(account.id);
+      const account = this.db
+        .prepare(
+          "SELECT id FROM accounts WHERE username = ? AND local_only = 0",
+        )
+        .get(username);
+      if (!account || typeof account.id !== "string")
+        throw new Error("Account not found");
+      this.db
+        .prepare("UPDATE accounts SET password_hash = ? WHERE id = ?")
+        .run(hash, account.id);
+      this.db
+        .prepare("DELETE FROM sessions WHERE account_id = ?")
+        .run(account.id);
       this.db.exec("COMMIT");
     } catch (error) {
       this.db.exec("ROLLBACK");

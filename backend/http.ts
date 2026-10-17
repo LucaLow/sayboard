@@ -3,7 +3,7 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
-import { MAX_BODY_BYTES } from "./api.js";
+import { MAX_BODY_BYTES } from "./api-http.js";
 
 type Handler = (request: Request, peer: string) => Promise<Response>;
 export function localServer(handler: Handler, origin?: string) {
