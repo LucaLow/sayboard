@@ -1,9 +1,22 @@
 import { existsSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import { SqliteStore } from "./store.js";
+import { smtpMailer } from "./mail.js";
 
 async function main() {
   const [command, name, ...extra] = process.argv.slice(2);
+  if (
+    command === "check-email" &&
+    !name &&
+    !extra.length &&
+    process.env.NODE_ENV === "production"
+  ) {
+    const mail = smtpMailer(process.env);
+    if (!mail) throw new Error("Email delivery is not configured");
+    await mail.verify();
+    console.log("SMTP authentication and TLS verified. No email was sent.");
+    return;
+  }
   const path = process.env.SAYBOARD_DATABASE_PATH;
   if (
     process.env.NODE_ENV !== "production" ||
@@ -13,14 +26,21 @@ async function main() {
   )
     throw new Error("Configure an absolute SQLite database path");
   if (
-    !["create", "reset-password", "backup", "delete"].includes(command) ||
+    ![
+      "create",
+      "reset-password",
+      "backup",
+      "delete",
+      "enable-invites",
+      "disable-invites",
+    ].includes(command) ||
     !name ||
     (command === "delete"
       ? extra.length !== 1 || extra[0] !== `--confirm-delete=${name}`
       : extra.length !== 0)
   )
     throw new Error(
-      "Use create USER, reset-password USER, backup DESTINATION or delete USER --confirm-delete=USER",
+      "Use create USER, reset-password USER, enable-invites USER, disable-invites USER, backup DESTINATION, check-email, or delete USER --confirm-delete=USER",
     );
   if (command !== "create" && !existsSync(path))
     throw new Error("An existing database is required");
@@ -54,6 +74,10 @@ async function main() {
     else if (command === "reset-password")
       await store.resetPassword(name, password);
     else if (command === "delete") store.deleteAccount(name);
+    else if (command === "enable-invites")
+      store.onboarding.enableOperator(name);
+    else if (command === "disable-invites")
+      store.onboarding.disableOperator(name);
     else await store.backup(name);
     console.log("Account maintenance completed.");
   } finally {

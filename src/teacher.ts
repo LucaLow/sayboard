@@ -11,11 +11,17 @@ import {
 import { serializeBoard } from "./board";
 import "./style.css";
 import "./teacher.css";
+import {
+  canInvite,
+  createInvitationsPanel,
+  showActivation,
+} from "./teacher-invitations";
 
 const root = document.querySelector<HTMLDivElement>("#teacher-app");
 if (!root) throw new Error("Missing teacher workspace");
 let signedIn = false;
 let serviceDisabled = false;
+let operator = false;
 let busy = false;
 let rooms: Classroom[] = [];
 let room: ClassroomDetail | null = null;
@@ -90,6 +96,7 @@ async function perform(run: () => Promise<void>) {
 }
 function clearPrivateView() {
   signedIn = false;
+  operator = false;
   rooms = [];
   room = null;
   profile = null;
@@ -167,6 +174,11 @@ function render() {
   navigation.append(link("Open communication board", "/"));
   if (signedIn)
     navigation.append(
+      el(
+        "span",
+        "teacher-user",
+        accountClient.currentSession()?.account.username ?? "",
+      ),
       action("Sign out", async () => {
         await accountClient.logout();
         clearPrivateView();
@@ -195,7 +207,11 @@ function render() {
     const card = el("section", "teacher-card teacher-login");
     card.append(
       el("h2", "", "Teacher sign in"),
-      el("p", "", "Use the account provided by your Sayboard administrator."),
+      el(
+        "p",
+        "",
+        "The teacher pilot is invite-only. Open your invitation to choose a password, or sign in with your existing account.",
+      ),
     );
     const login = el("form", "teacher-form");
     const usernameLabel = el("label", "", "Teacher username");
@@ -203,6 +219,9 @@ function render() {
     username.autocomplete = "username";
     username.required = true;
     username.maxLength = 64;
+    username.autocapitalize = "none";
+    username.spellcheck = false;
+    username.value = fieldValues.get("login-username") ?? "";
     usernameLabel.append(username);
     const passwordLabel = el("label", "", "Password");
     const password = el("input");
@@ -222,6 +241,7 @@ function render() {
         await accountClient.login(name, secret);
         clearPrivateView();
         rooms = await teacherClient.list();
+        operator = await canInvite();
         signedIn = true;
         notice = "Signed in. Choose a classroom or create your first one.";
       });
@@ -273,6 +293,21 @@ function render() {
     );
     grid.append(create);
     shell.append(grid);
+    if (!rooms.length) {
+      const guide = el("ol", "teacher-start-guide");
+      for (const step of [
+        "Create a classroom and add a learner alias.",
+        "Edit and preview the learner’s board.",
+        "Publish a version when it is ready.",
+        "Link a device and load the published board through caregiver controls.",
+      ])
+        guide.append(el("li", "", step));
+      shell.append(
+        el("h2", "teacher-guide-heading", "Your first classroom, step by step"),
+        guide,
+      );
+    }
+    if (operator) shell.append(createInvitationsPanel());
   } else if (!profile) {
     const current = room;
     shell.append(
@@ -364,6 +399,28 @@ function render() {
       ),
       status,
     );
+    const progress = el("ol", "teacher-progress");
+    progress.setAttribute("aria-label", "Board setup");
+    for (const [title, detail] of [
+      ["Prepare", `Draft revision ${current.revision}`],
+      [
+        "Publish",
+        current.publishedVersion
+          ? `Version ${current.publishedVersion} available`
+          : "Not published yet",
+      ],
+      [
+        "Connect",
+        current.devices.length
+          ? `${current.devices.length} linked device${current.devices.length === 1 ? "" : "s"}`
+          : "No devices linked yet",
+      ],
+    ]) {
+      const step = el("li");
+      step.append(el("strong", "", title), el("span", "", detail));
+      progress.append(step);
+    }
+    shell.append(progress);
     const grid = el("div", "teacher-profile-grid");
     const draft = el("section", "teacher-card");
     draft.append(
@@ -464,7 +521,29 @@ function render() {
           `Expires ${new Date(pairing.expiresAt).toLocaleTimeString()}. Refreshing this page hides the code.`,
         ),
       );
+      const address = el(
+        "label",
+        "teacher-link-field",
+        "Open this address on the learner’s device",
+      );
+      const addressInput = el("input");
+      addressInput.readOnly = true;
+      addressInput.value = location.origin + "/";
+      addressInput.onclick = () => addressInput.select();
+      address.append(addressInput);
+      devices.prepend(address);
       devices.append(panel);
+      devices.append(
+        action("Copy pairing code", async () => {
+          if (!pairing) return;
+          try {
+            await navigator.clipboard.writeText(pairing.code);
+            notice = "Pairing code copied. Enter it on the intended device.";
+          } catch {
+            notice = "Select and copy the code shown above.";
+          }
+        }),
+      );
     }
     if (!current.devices.length)
       devices.append(el("p", "teacher-muted", "No active linked devices."));
@@ -553,31 +632,48 @@ function render() {
       .querySelectorAll<HTMLInputElement | HTMLButtonElement>("input,button")
       .forEach((control) => (control.disabled = true));
 }
-render();
-void perform(async () => {
-  const availability = await accountClient.checkAvailability();
-  if (availability.state === "disabled") {
-    serviceDisabled = true;
-    notice =
-      "Classroom hosting is not enabled on this website. Use the address provided by your administrator.";
-    return;
-  }
-  const session = await accountClient.restoreSession();
-  if (!session) {
-    notice = "Sign in to open your classrooms.";
-    return;
-  }
-  rooms = await teacherClient.list();
-  signedIn = true;
-  const parts = location.hash.slice(1).split("/");
-  if (parts[0]) {
-    const classroom = rooms.find((value) => value.id === id(parts[0]));
-    if (classroom) {
-      room = await teacherClient.classroom(classroom.id);
-      if (parts[1] && room.profiles.some((p) => p.id === parts[1]))
-        profile = await teacherClient.profile(id(parts[1]));
-    }
-  }
-  rememberLocation();
-  notice = "Your classroom workspace is up to date.";
+// Opening another private link in this tab changes only the fragment. Start a
+// fresh activation page rather than leaving the signed-in workspace on screen.
+window.addEventListener("hashchange", () => {
+  if (new URLSearchParams(location.hash.slice(1)).has("activate"))
+    location.reload();
 });
+const activation = new URLSearchParams(location.hash.slice(1)).get("activate");
+if (activation !== null) {
+  history.replaceState(null, "", location.pathname);
+  void showActivation(root, activation, (username) => {
+    fieldValues.set("login-username", username);
+    notice = "Password saved. Sign in to open your teacher workspace.";
+    render();
+  });
+} else {
+  render();
+  void perform(async () => {
+    const availability = await accountClient.checkAvailability();
+    if (availability.state === "disabled") {
+      serviceDisabled = true;
+      notice =
+        "Classroom hosting is not enabled on this website. Use the address provided by your administrator.";
+      return;
+    }
+    const session = await accountClient.restoreSession();
+    if (!session) {
+      notice = "Sign in to open your classrooms.";
+      return;
+    }
+    rooms = await teacherClient.list();
+    operator = await canInvite();
+    signedIn = true;
+    const parts = location.hash.slice(1).split("/");
+    if (parts[0]) {
+      const classroom = rooms.find((value) => value.id === id(parts[0]));
+      if (classroom) {
+        room = await teacherClient.classroom(classroom.id);
+        if (parts[1] && room.profiles.some((p) => p.id === parts[1]))
+          profile = await teacherClient.profile(id(parts[1]));
+      }
+    }
+    rememberLocation();
+    notice = "Your classroom workspace is up to date.";
+  });
+}

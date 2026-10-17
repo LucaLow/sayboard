@@ -1,4 +1,4 @@
-# Sayboard browser notices
+# Sayboard third-party notices
 
 The combined frontend is GPL-3.0-or-later; original Sayboard modules additionally permit separate MIT reuse. Third-party licences remain applicable. The full licence text and notices are in public/tts-notices.txt and the corresponding-source archives linked from /source/.
 
@@ -10,3 +10,5 @@ The combined frontend is GPL-3.0-or-later; original Sayboard modules additionall
 - Lucide icons: ISC; see ICON-LICENSE.txt. Emoji/catalogue material: see CATALOGUE-LICENSE.txt.
 
 Archive manifests bind the pinned sources to the runtime versions. No source-delivery condition requires a GitHub account, payment, NDA or special password. Independent backend implementation and user data are outside these browser archives.
+
+The standalone server bundles PostgreSQL client libraries and Nodemailer. Nodemailer supplies optional SMTP email delivery under its MIT licence and is not included in the browser app. `npm run build:server` collects the full licences of bundled server dependencies into `server-dist/THIRD-PARTY-NOTICES.txt`, which ships in the runtime image.

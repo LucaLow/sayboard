@@ -27,6 +27,7 @@ Public source code does not make customer data public. Production records, crede
 | Optional PostgreSQL adapter | Implemented against the same account storage contract |
 | Classroom dashboard and ownership | Implemented for one adult owner per classroom, with learner aliases and SQLite storage |
 | Device pairing and published board updates | Implemented with single-use codes, scoped device credentials, manual apply and version restore |
+| Invite-only teacher onboarding | Implemented with organiser permissions, single-use password setup and optional SMTP delivery |
 | Shared school organisations and delegated roles | Planned |
 | Subscriptions and billing | Planned; prices undecided |
 
@@ -72,4 +73,4 @@ Keep subscription checks at hosted-service boundaries. Self-hosted deployments u
 6. Run a teacher pilot. Agree the personal-backup policy and a sustainable classroom price using actual operating and support costs.
 7. Add hosted subscriptions, cancellation behaviour, data retention, privacy terms and support arrangements before taking payments.
 
-Repository publication and classroom implementation are complete. The next milestone is the teacher pilot, using [the documented workflow](TEACHER-PILOT.md). The official deployment uses a standalone VPS at `classroom.sayboard.org`, with the free static app at `sayboard.org`. Email is not required for operator-provisioned accounts.
+Repository publication and classroom implementation are complete. The next milestone is the teacher pilot, using [the documented workflow](TEACHER-PILOT.md). The official deployment uses a standalone VPS at `classroom.sayboard.org`, with the free static app at `sayboard.org`. Organisers can share private invitations themselves or send them through standard SMTP. Teachers choose their own passwords, and password recovery is organiser assisted.

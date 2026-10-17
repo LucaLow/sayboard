@@ -41,6 +41,26 @@ Open the site, enter caregiver mode, expand **Backup and transfer**, and sign in
 
 The teacher dashboard is `/teacher.html`. Its [classroom workflow](TEACHER-PILOT.md) uses the same adult account, separate classroom drafts and scoped device links. Classroom storage requires SQLite.
 
+### Invite-only onboarding and email
+
+After creating the organiser's account, run `docker compose exec -T app node server-dist/manage.cjs enable-invites organiser`. That account can create teacher invitations and password-reset links from the dashboard. Use `disable-invites organiser` to remove this permission immediately. Other teachers cannot invite accounts. New accounts created through invitations receive no organiser permission.
+
+Private invitation links work without an email provider. Optional email delivery uses SMTP with required TLS and normal certificate validation. Set these server-only values in the private `.env` file and recreate the app and proxy:
+
+```text
+SAYBOARD_SMTP_HOST=smtp.example.org
+SAYBOARD_SMTP_PORT=587
+SAYBOARD_SMTP_USER=your-sending-user
+SAYBOARD_SMTP_PASSWORD=your-sending-secret
+SAYBOARD_EMAIL_FROM=accounts@yourdomain.org
+```
+
+An optional `SAYBOARD_EMAIL_REPLY_TO` sets a monitored reply address. Configuring a sender does not create an inbox. Authenticate the sender's domain with the provider's DKIM and SPF records, add a DMARC policy, and disable open and click tracking for account links. Keep email credentials out of the browser build, source archives and Git. A sending-only key restricted to the chosen domain is sufficient.
+
+Run `docker compose exec -T app node server-dist/manage.cjs check-email` to verify SMTP authentication and TLS without sending a message. The server reports email availability in the organiser's invitation controls. It does not send email merely because an account signs in or an app page loads.
+
+On DigitalOcean, ports 25, 465 and 587 are blocked by default. Resend supports STARTTLS on 2587; Postmark supports STARTTLS on 2525. Choose an allowed provider port rather than running a mail server on the VPS. No provider SDK or managed authentication service is needed.
+
 To permanently delete one adult account and all its live personal backups, sessions, classrooms, profiles, versions and device links, use `docker compose exec -T app node server-dist/manage.cjs delete teacher --confirm-delete=teacher`. This does not delete copies already on devices or retained encrypted backups.
 
 ## A 512 MB VPS

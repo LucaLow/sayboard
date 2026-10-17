@@ -8,7 +8,7 @@ import shutil
 import subprocess
 from public_readiness import forbidden_path, scan_bytes
 
-ROOT_FILES = {"README.md", "CONTRIBUTING.md", "SECURITY.md", "LICENSE", "LICENSING.md", "LICENSE-OWNER-MIT", "THIRD-PARTY-NOTICES.md", "CATALOGUE-LICENSE.txt", "ICON-LICENSE.txt", "CATEGORIES-CONTRACT.md", "package.json", "package-lock.json", "index.html", "teacher.html", "tsconfig.json", "vite.config.ts", "vitest.config.ts", "eslint.config.js", "Dockerfile", "compose.yaml", ".env.example", ".gitignore", ".dockerignore", ".gitattributes"}
+ROOT_FILES = {"README.md", "CONTRIBUTING.md", "SECURITY.md", "LICENSE", "LICENSING.md", "LICENSE-OWNER-MIT", "THIRD-PARTY-NOTICES.md", "CATALOGUE-LICENSE.txt", "ICON-LICENSE.txt", "CATEGORIES-CONTRACT.md", "package.json", "package-lock.json", "index.html", "teacher.html", "move-board.html", "vercel.json", "tsconfig.json", "vite.config.ts", "vitest.config.ts", "eslint.config.js", "Dockerfile", "compose.yaml", ".env.example", ".gitignore", ".dockerignore", ".gitattributes"}
 ROOT_DIRS = {"src", "backend", "public", "scripts", "tests", "docs", "deploy", ".github"}
 
 

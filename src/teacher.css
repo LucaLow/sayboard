@@ -85,6 +85,73 @@
   border-radius: 8px;
   padding: 9px 12px;
 }
+.teacher-form input,
+.teacher-form select,
+.teacher-link-field input {
+  font-size: 16px;
+}
+.teacher-link-field {
+  display: grid;
+  gap: 8px;
+  margin: 18px 0;
+  font-size: 15px;
+  font-weight: 650;
+}
+.teacher-link-field[hidden] {
+  display: none;
+}
+.teacher-link-field input,
+.teacher-form select {
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  border: 1px solid #64796c;
+  border-radius: 8px;
+  padding: 10px;
+  color: #193d35;
+  background: white;
+}
+.teacher-link-field input[readonly] {
+  background: #f4f6ef;
+  font-weight: 400;
+}
+.teacher-invitations {
+  margin-top: 32px;
+  max-width: 700px;
+}
+.teacher-user {
+  font-size: 14px;
+  color: #445e51;
+}
+.teacher-guide-heading {
+  margin-top: 36px !important;
+}
+.teacher-start-guide {
+  padding-left: 24px;
+  max-width: 640px;
+  line-height: 1.6;
+}
+.teacher-start-guide li {
+  padding: 5px 0 5px 6px;
+}
+.teacher-progress {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  list-style: none;
+  gap: 12px;
+  padding: 0;
+  margin: 28px 0;
+}
+.teacher-progress li {
+  border-left: 3px solid #7b9b75;
+  padding: 4px 12px;
+  display: grid;
+  gap: 6px;
+}
+.teacher-progress span {
+  font-size: 14px;
+  color: #445e51;
+}
 .teacher-shell .button {
   display: inline-flex;
   justify-content: center;
@@ -174,6 +241,9 @@
   margin: 8px 8px 0 0;
 }
 @media (max-width: 720px) {
+  .teacher-progress {
+    grid-template-columns: 1fr;
+  }
   .teacher-shell {
     padding: 24px 18px 36px;
   }
