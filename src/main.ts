@@ -733,60 +733,56 @@ function renderEditor(shell: HTMLElement, working: Board) {
   );
   const tools = el("div", "editor-toolbar");
   const saveTools = el("div", "editor-toolbar editor-save-tools");
-  saveTools.append(
-    button(
-      teacherEditing ? "Save classroom draft" : "Save board",
-      async () => {
-        if (teacherEditing) {
-          if (teacherSaving) return;
-          teacherSaving = true;
-          document
-            .querySelectorAll<
-              HTMLInputElement | HTMLButtonElement | HTMLSelectElement
-            >("#app input, #app button, #app select")
-            .forEach((control) => (control.disabled = true));
-          try {
-            const saved = await teacherClient.save(
-              teacherEditing.id,
-              teacherEditing.revision,
-              structuredClone(working),
-            );
-            teacherEditing = saved;
-            board = saved.board;
-            draft = null;
-            location.assign(teacherDashboard());
-          } catch (error) {
-            teacherSaving = false;
-            render();
-            status(
-              error instanceof Error
-                ? error.message
-                : "The classroom draft could not be saved. Export it before leaving.",
-              true,
-            );
-          }
-          return;
-        }
-        if (persist(working)) {
-          stop();
-          draft = null;
-          render();
-          document
-            .querySelector<HTMLButtonElement>(".caregiver-access")
-            ?.focus();
-          status(
-            layoutSaveWarning || "Board saved on this device.",
-            Boolean(layoutSaveWarning),
+  const saveBoardButton = button(
+    teacherEditing ? "Save classroom draft" : "Save board",
+    async () => {
+      if (teacherEditing) {
+        if (teacherSaving) return;
+        teacherSaving = true;
+        document
+          .querySelectorAll<
+            HTMLInputElement | HTMLButtonElement | HTMLSelectElement
+          >("#app input, #app button, #app select")
+          .forEach((control) => (control.disabled = true));
+        try {
+          const saved = await teacherClient.save(
+            teacherEditing.id,
+            teacherEditing.revision,
+            structuredClone(working),
           );
-        } else {
+          teacherEditing = saved;
+          board = saved.board;
+          draft = null;
+          location.assign(teacherDashboard());
+        } catch (error) {
+          teacherSaving = false;
           render();
-          focusEditorAction("Save board");
+          status(
+            error instanceof Error
+              ? error.message
+              : "The classroom draft could not be saved. Export it before leaving.",
+            true,
+          );
         }
-      },
-      "button primary",
-    ),
-    saveState,
+        return;
+      }
+      if (persist(working)) {
+        stop();
+        draft = null;
+        render();
+        document.querySelector<HTMLButtonElement>(".caregiver-access")?.focus();
+        status(
+          layoutSaveWarning || "Board saved on this device.",
+          Boolean(layoutSaveWarning),
+        );
+      } else {
+        render();
+        focusEditorAction("Save board");
+      }
+    },
+    "button primary",
   );
+  saveTools.append(saveBoardButton, saveState);
   header?.append(saveTools);
   tools.append(
     button("Add word or phrase", () => editTile(working, null)),
@@ -986,6 +982,12 @@ function renderEditor(shell: HTMLElement, working: Board) {
       }),
       createClassroomPanel({
         confirm: confirmChange,
+        setPending: (pending) => {
+          saveBoardButton.disabled = pending;
+          if (pending)
+            saveState.textContent = "Waiting for the classroom transfer…";
+          else updateSaveState();
+        },
         applyBoard: (next) => {
           stop();
           draft = next;

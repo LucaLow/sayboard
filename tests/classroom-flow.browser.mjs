@@ -53,13 +53,37 @@ export async function checkClassroomFlow({
           exact: true,
         })
         .click();
+    const downloadPending = Promise.withResolvers();
+    const releaseDownload = Promise.withResolvers();
+    let publicationReads = 0;
+    await device.route("**/api/device/board", async (route) => {
+      publicationReads++;
+      if (publicationReads === 2) {
+        downloadPending.resolve();
+        await releaseDownload.promise;
+      }
+      await route.continue();
+    });
     await tablet
       .getByRole("button", { name: "Load published board", exact: true })
       .click();
     await confirm(tablet);
+    await downloadPending.promise;
+    try {
+      assert.equal(
+        await tablet
+          .getByRole("button", { name: "Save board", exact: true })
+          .isEnabled(),
+        false,
+        "Saving must wait for the publication download to finish",
+      );
+    } finally {
+      releaseDownload.resolve();
+    }
     await tablet
       .getByRole("button", { name: "Save board", exact: true })
       .click();
+    await device.unroute("**/api/device/board");
   };
   try {
     await page.goto(origin + "/teacher.html");
@@ -424,6 +448,7 @@ export async function checkClassroomFlow({
       explicitPublicationAndDeviceApply: true,
       publishedBoardSurvivesReload: true,
       latestPublicationWithoutManualRefresh: true,
+      saveWaitsForPublicationDownload: true,
       publicationChangedDuringConfirmationRejected: true,
       offlineLoadPreservesWorkingBoard: true,
       revokedDeviceCannotLoadCachedPublication: true,

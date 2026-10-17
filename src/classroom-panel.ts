@@ -6,9 +6,11 @@ import { type DeviceBoard } from "./classroom-contract";
 export function createClassroomPanel({
   applyBoard,
   confirm,
+  setPending,
 }: {
   applyBoard: (board: Board) => void;
   confirm: (message: string) => Promise<boolean>;
+  setPending: (pending: boolean) => void;
 }) {
   const section = el("section", "settings account-panel");
   const content = el("div");
@@ -24,6 +26,7 @@ export function createClassroomPanel({
   async function perform(run: () => Promise<void>) {
     if (busy) return;
     busy = true;
+    setPending(true);
     section
       .querySelectorAll<HTMLInputElement | HTMLButtonElement>("input,button")
       .forEach((control) => (control.disabled = true));
@@ -40,6 +43,7 @@ export function createClassroomPanel({
         linked = null;
     } finally {
       busy = false;
+      setPending(false);
       if (section.isConnected) render();
     }
   }
@@ -99,12 +103,14 @@ export function createClassroomPanel({
       if (current.board) {
         content.append(
           action("Load published board", async () => {
+            notice.textContent = "Checking the latest published board…";
             // The panel may have been open while the teacher published again.
             // Never load its cached snapshot, including after access is revoked.
             const latest = await deviceClient.board();
             linked = latest;
             if (!latest.board) {
-              notice.textContent = "Your teacher has not published a board yet.";
+              notice.textContent =
+                "Your teacher has not published a board yet.";
               return;
             }
             if (
@@ -130,7 +136,13 @@ export function createClassroomPanel({
             }
           }),
         );
-        content.append(el("p", "", "Load published board checks for the latest version. Review the draft, then choose Save board to apply it here."));
+        content.append(
+          el(
+            "p",
+            "",
+            "Load published board checks for the latest version. Review the draft, then choose Save board to apply it here.",
+          ),
+        );
       }
       content.append(
         action("Disconnect classroom device", async () => {
