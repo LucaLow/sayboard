@@ -331,7 +331,7 @@ summary:focus-visible {
   flex-shrink: 0;
 }
 .editor-workspace .settings-group {
-  border-color: var(--editor-line);
+  border-color: var(--control-border);
   border-radius: 18px;
   margin: 16px 0;
   overflow: clip;
@@ -341,7 +341,7 @@ summary:focus-visible {
   font-size: 18px;
 }
 .editor-workspace .settings-group[open] > summary {
-  border-bottom: 1px solid var(--editor-line);
+  border-bottom: 1px solid var(--control-border);
 }
 .editor-workspace .settings-group > .settings {
   padding: 24px;
