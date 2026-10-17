@@ -15,7 +15,7 @@ export function createClassroomPanel({
   const notice = el(
     "p",
     "notice",
-    "Link this device using a code from your teacher. Linking does not upload or replace its working board.",
+    "Already linked? Check classroom connection to see available versions. To connect a new device, use your teacher’s pairing code. Publishing never automatically replaces this device’s working board.",
   );
   notice.role = "status";
   section.append(el("h2", "", "Classroom board"), content, notice);
@@ -97,18 +97,40 @@ export function createClassroomPanel({
         ),
       );
       if (current.board) {
-        const published = current.board;
         content.append(
           action("Load published board", async () => {
+            // The panel may have been open while the teacher published again.
+            // Never load its cached snapshot, including after access is revoked.
+            const latest = await deviceClient.board();
+            linked = latest;
+            if (!latest.board) {
+              notice.textContent = "Your teacher has not published a board yet.";
+              return;
+            }
             if (
               await confirm(
-                `Load version ${current.version} into this caregiver draft? This replaces this draft. Save board applies it on this device.`,
+                `Load version ${latest.version} into this caregiver draft? This replaces this draft. Save board applies it on this device.`,
               )
             ) {
-              if (section.isConnected) applyBoard(structuredClone(published));
+              if (!section.isConnected) return;
+              // Confirmation can stay open for minutes. Check access and the
+              // version again so only the publication the caregiver approved loads.
+              const approved = await deviceClient.board();
+              linked = approved;
+              if (
+                approved.profileId !== latest.profileId ||
+                approved.version !== latest.version
+              ) {
+                notice.textContent =
+                  "The published version changed while you were confirming. Your draft is unchanged. Choose Load published board again to review the latest version.";
+                return;
+              }
+              if (section.isConnected && approved.board)
+                applyBoard(structuredClone(approved.board));
             }
           }),
         );
+        content.append(el("p", "", "Load published board checks for the latest version. Review the draft, then choose Save board to apply it here."));
       }
       content.append(
         action("Disconnect classroom device", async () => {
