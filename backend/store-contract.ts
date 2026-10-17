@@ -1,4 +1,5 @@
 import type { Board } from "../src/board.js";
+import type { ClassroomStore } from "./classroom-contract.js";
 
 export type Account = {
   id: string;
@@ -10,6 +11,7 @@ export type Session = { account: Account; expiresAt: number };
 export type SavedBoard = { board: Board; revision: number };
 // Both adapters use the shared parser: v1 reads migrate in memory; writes use v2.
 export interface Store {
+  readonly classrooms?: ClassroomStore;
   account(username: string): Promise<Account | null>;
   session(hash: string, now: number): Promise<Session | null>;
   createSession(

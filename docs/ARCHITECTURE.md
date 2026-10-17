@@ -14,7 +14,7 @@ Caddy terminates HTTPS and overwrites forwarded headers. The Node server binds o
 
 SQLite is the default on one VPS. Passwords use salted scrypt; sessions store token hashes. WAL mode and atomic revision comparisons handle concurrent operations. Account provisioning, password resets and consistent backup snapshots run through an operator CLI. Production never creates a default account. The separate development API retains explicit loopback-only demonstration mode.
 
-PostgreSQL implements the same storage contract for operators who need a separate database. It uses ordinary PostgreSQL and verified TLS, with no hosting-vendor lifecycle hook. Shared login budgets are stored in the database.
+PostgreSQL implements personal account backups for operators who need a separate database. It uses ordinary PostgreSQL and verified TLS, with no hosting-vendor lifecycle hook. Shared login budgets are stored in the database. Classroom storage currently requires SQLite.
 
 ## Source archives
 
@@ -22,4 +22,23 @@ Production builds create hash-pinned preferred-source archives for the browser a
 
 ## Classroom boundary
 
-The current account API stores one copy per adult account. Organisations, memberships, student profiles, published versions, device pairing and billing are future modules. Keep subscriptions separate from data ownership and local communication. See [PROJECT.md](PROJECT.md).
+`teacher.html` and `src/teacher.ts` provide the adult workspace. `src/classroom-client.ts` parses every network response against `src/classroom-contract.ts`. Teacher editing reuses the communication app with an explicit profile ID. That editor saves to the server and does not write its board to browser storage. Preview uses the actual communication view.
+
+`backend/classroom-api.ts` receives the authenticated adult ID from the existing account API. `backend/classroom-store.ts` owns SQLite classroom queries and synchronous transactions. Ownership is checked in each read and mutation. The first pilot has one adult owner per classroom. Shared school memberships and roles are future work.
+
+| Record | Owner and lifecycle |
+| --- | --- |
+| Classroom | One authenticated adult account |
+| Profile | One classroom, identified by an alias without a student account |
+| Draft | One profile, validated board plus revision for compare-and-swap saves |
+| Published version | Immutable profile snapshot with publication time and adult author |
+| Pairing code | One profile and device name, hashed, single use, expires after 10 minutes |
+| Device credential | Hashed random token, reads one profile's current publication, expires after 30 days or revocation |
+
+Publication copies a saved draft into an immutable version. Retrying publication of unchanged content returns the existing version. Restoring a version changes only the draft until the teacher publishes again. A linked device fetches updates only through caregiver controls. Loading creates a local draft; a separate Save applies it. Revocation blocks future transfers and preserves the device's working board.
+
+The device API has separate HttpOnly credentials and CSRF protection. It cannot list classrooms, edit drafts or manage accounts. Classroom deletion cascades through server-side profiles, versions, pairing codes and device credentials. Operator account deletion also removes that adult's personal backup and sessions. Rotating encrypted backups retain older records until expiry.
+
+Storage limits bound a pilot account to 10 classrooms, 30 profiles per classroom and 64 MiB of combined draft and version payloads. A profile can have 200 published versions and 20 active linked devices. Pairing attempts share a persisted 10-attempt, five-minute peer budget. The small-VPS configuration admits one password hash at a time while keeping the scrypt cost unchanged.
+
+Billing does not participate in local communication or data ownership. No subscription code is included in this pilot. See [PROJECT.md](PROJECT.md).

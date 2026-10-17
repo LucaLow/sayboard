@@ -1,3 +1,5 @@
+import { body, HttpError, json, sessionToken } from "./api-http.js";
+import { deviceApi, teacherApi } from "./classroom-api.js";
 import { parseBoard } from "../src/board.js";
 import type { ApiConfig } from "./config.js";
 import type { Store } from "./store-contract.js";
@@ -11,35 +13,6 @@ import {
 } from "./password.js";
 
 export const SESSION_SECONDS = 8 * 60 * 60;
-export const MAX_BODY_BYTES = 100_000;
-class HttpError extends Error {
-  constructor(
-    readonly status: number,
-    readonly code: string,
-  ) {
-    super(code);
-  }
-}
-const json = (status: number, data: unknown, headers: HeadersInit = {}) =>
-  new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      "Content-Type": "application/json",
-      "Cache-Control": "no-store",
-      "X-Content-Type-Options": "nosniff",
-      ...headers,
-    },
-  });
-function sessionToken(request: Request, name: string): string | null {
-  const values = (request.headers.get("cookie") ?? "")
-    .split(";")
-    .map((part) => part.trim())
-    .filter((part) => part.startsWith(`${name}=`));
-  if (values.length !== 1) return null;
-  const token = values[0].slice(name.length + 1);
-  return /^[a-f0-9]{64}$/.test(token) ? token : null;
-}
-
 // Run this before connecting to storage as well as within the authenticated API.
 export function requestRejection(
   request: Request,
@@ -78,37 +51,6 @@ export function requestRejection(
   )
     return json(403, { error: "origin_rejected" });
   return null;
-}
-async function body(request: Request): Promise<unknown> {
-  if (
-    request.headers.get("content-type")?.split(";")[0].trim() !==
-    "application/json"
-  )
-    throw new HttpError(415, "json_required");
-  if (Number(request.headers.get("content-length")) > MAX_BODY_BYTES)
-    throw new HttpError(413, "body_too_large");
-  const reader = request.body?.getReader();
-  if (!reader) throw new HttpError(400, "invalid_json");
-  let size = 0;
-  const chunks: Uint8Array[] = [];
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > MAX_BODY_BYTES) {
-        await reader.cancel();
-        throw new HttpError(413, "body_too_large");
-      }
-      chunks.push(value);
-    }
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  } catch (error) {
-    if (error instanceof HttpError) throw error;
-    throw new HttpError(400, "invalid_json");
-  } finally {
-    reader.releaseLock();
-  }
 }
 function credentials(value: unknown): { username: string; password: string } {
   if (
@@ -159,6 +101,8 @@ export async function createApi(
   // Equal-cost verification for unknown usernames. Generated once at startup.
   const dummyHash = await hashPassword(newToken());
   let passwordChecks = 0;
+  const passwordConcurrency =
+    config.kind === "hosted" ? (config.passwordConcurrency ?? 2) : 2;
   return async (request: Request, peer: string): Promise<Response> => {
     try {
       const url = new URL(request.url);
@@ -166,6 +110,12 @@ export async function createApi(
       if (rejection) return rejection;
       const mutating = !["GET", "HEAD", "OPTIONS"].includes(request.method);
       if (url.search) throw new HttpError(400, "query_not_supported");
+      if (url.pathname.startsWith("/api/device/"))
+        return await deviceApi(request, store, config, peer, now());
+      const classroomRequest =
+        url.pathname === "/api/classrooms" ||
+        url.pathname.startsWith("/api/classrooms/") ||
+        url.pathname.startsWith("/api/profiles/");
       const known = [
         "/api/auth/capabilities",
         "/api/auth/login",
@@ -173,7 +123,8 @@ export async function createApi(
         "/api/auth/logout",
         "/api/board",
       ];
-      if (!known.includes(url.pathname)) throw new HttpError(404, "not_found");
+      if (!known.includes(url.pathname) && !classroomRequest)
+        throw new HttpError(404, "not_found");
       const allowed =
         url.pathname === "/api/board"
           ? ["GET", "PUT"]
@@ -182,7 +133,7 @@ export async function createApi(
               )
             ? ["GET"]
             : ["POST"];
-      if (!allowed.includes(request.method))
+      if (!classroomRequest && !allowed.includes(request.method))
         return json(
           405,
           { error: "method_not_allowed" },
@@ -192,7 +143,10 @@ export async function createApi(
         return json(200, { state: "enabled" });
       if (url.pathname === "/api/auth/login") {
         const input = credentials(await body(request));
-        if (!(await store.allowLogin(peer, now())) || passwordChecks >= 2)
+        if (
+          !(await store.allowLogin(peer, now())) ||
+          passwordChecks >= passwordConcurrency
+        )
           return json(
             429,
             { error: "too_many_attempts" },
@@ -260,6 +214,13 @@ export async function createApi(
         await store.deleteSession(tokenHash(token));
         return json(200, { ok: true }, { "Set-Cookie": cookie("", 0) });
       }
+      if (classroomRequest)
+        return await teacherApi(
+          request,
+          store.classrooms,
+          session.account.id,
+          now(),
+        );
       // Owner comes exclusively from the server-side session, never client input.
       if (request.method === "GET")
         return json(
@@ -279,7 +240,7 @@ export async function createApi(
       return json(200, saved);
     } catch (error) {
       if (error instanceof HttpError)
-        return json(error.status, { error: error.code });
+        return json(error.status, { error: error.code }, error.headers);
       // Do not leak SQL, filesystem paths, submitted boards, passwords or tokens.
       return json(503, { error: "storage_unavailable" });
     }

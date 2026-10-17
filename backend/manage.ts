@@ -13,12 +13,14 @@ async function main() {
   )
     throw new Error("Configure an absolute SQLite database path");
   if (
-    !["create", "reset-password", "backup"].includes(command) ||
+    !["create", "reset-password", "backup", "delete"].includes(command) ||
     !name ||
-    extra.length
+    (command === "delete"
+      ? extra.length !== 1 || extra[0] !== `--confirm-delete=${name}`
+      : extra.length !== 0)
   )
     throw new Error(
-      "Use create USER, reset-password USER or backup DESTINATION",
+      "Use create USER, reset-password USER, backup DESTINATION or delete USER --confirm-delete=USER",
     );
   if (command !== "create" && !existsSync(path))
     throw new Error("An existing database is required");
@@ -33,7 +35,7 @@ async function main() {
     throw new Error("Use a new absolute backup path");
   process.umask(0o077);
   let password = "";
-  if (command !== "backup") {
+  if (command === "create" || command === "reset-password") {
     if (process.stdin.isTTY)
       throw new Error(
         "Supply the password on stdin using the hidden shell prompt documented in docs/SELF-HOSTING.md",
@@ -51,6 +53,7 @@ async function main() {
     if (command === "create") await store.addAccount(name, password, false);
     else if (command === "reset-password")
       await store.resetPassword(name, password);
+    else if (command === "delete") store.deleteAccount(name);
     else await store.backup(name);
     console.log("Account maintenance completed.");
   } finally {

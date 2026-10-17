@@ -109,7 +109,13 @@ describe("local-only configuration", () => {
       expect(() => localConfig(env)).toThrow();
   });
   it("rejects CI development seeding", () => {
-    expect(() => localConfig({ NODE_ENV: "development", SAYBOARD_LOCAL_DEV: "1", CI: "1" })).toThrow();
+    expect(() =>
+      localConfig({
+        NODE_ENV: "development",
+        SAYBOARD_LOCAL_DEV: "1",
+        CI: "1",
+      }),
+    ).toThrow();
   });
 
   it("rejects public origins and binds only IPv4 loopback", () => {
@@ -262,6 +268,36 @@ describe("passwords and authentication", () => {
     );
     expect(replies.map((reply) => reply.status).sort()).toEqual([
       200, 200, 429, 429,
+    ]);
+  });
+  it("allows only one password calculation on a small hosted server", async () => {
+    const db = store();
+    const hostedOrigin = "https://pilot.example.test";
+    const api = await createApi(db, {
+      kind: "hosted",
+      origin: hostedOrigin,
+      passwordConcurrency: 1,
+    });
+    const replies = await Promise.all(
+      Array.from({ length: 3 }, () =>
+        api(
+          new Request(`${hostedOrigin}/api/auth/login`, {
+            method: "POST",
+            headers: {
+              origin: hostedOrigin,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              username: "missing",
+              password: "synthetic-password-only",
+            }),
+          }),
+          peer,
+        ),
+      ),
+    );
+    expect(replies.map((reply) => reply.status).sort()).toEqual([
+      401, 429, 429,
     ]);
   });
   it("rate limits password work with a persisted budget", async () => {

@@ -7,6 +7,10 @@ import "./type-and-speak.css";
 import { showDismissibleModal } from "./modal";
 import "./editor-ux.css";
 import { createAccountPanel } from "./account-panel";
+import { createClassroomPanel } from "./classroom-panel";
+import { teacherClient } from "./classroom-client";
+import { accountClient } from "./account";
+import { id, type ProfileDetail } from "./classroom-contract";
 import { createSymbolPicker } from "./symbol-picker";
 import { placeTile, isTileSize } from "./layout";
 import { loadTheme, applyTheme } from "./theme";
@@ -48,6 +52,19 @@ import "./fullscreen.css";
 import "./compact-layout.css";
 const root = document.querySelector<HTMLDivElement>("#app");
 if (!root) throw new Error("Missing app root");
+const teacherParameters = new URLSearchParams(location.search);
+const teacherBoardRequest = teacherParameters.get("teacherBoard");
+let teacherEditing: ProfileDetail | null = null;
+let teacherSaving = false;
+function teacherDashboard() {
+  const classroom = teacherParameters.get("classroom");
+  return (
+    "/teacher.html" +
+    (classroom && teacherEditing
+      ? `#${encodeURIComponent(classroom)}/${teacherEditing.id}`
+      : "")
+  );
+}
 const fullscreen = createFullscreen(root);
 let board = starterBoard();
 let storageError = "";
@@ -226,6 +243,11 @@ function speakText(phrase: string, id: string | null, settings: Board = board) {
   });
 }
 function persist(next: Board) {
+  if (teacherBoardRequest) {
+    storageError =
+      "This classroom draft must be saved to the teacher workspace. Your device board is unchanged.";
+    return false;
+  }
   if (storageBlocked && next !== replacementAuthorizedDraft) {
     storageError =
       "The saved board is retained. Import a backup, load an account copy, or confirm Reset before saving a replacement.";
@@ -464,12 +486,25 @@ function render() {
       theme === "light" ? "Switch to dark mode" : "Switch to light mode";
     themeButton.setAttribute("aria-label", label);
     themeButton.title = label;
-    themeButton.replaceChildren(renderSymbol(theme === "light" ? "moon" : "sun"));
+    themeButton.replaceChildren(
+      renderSymbol(theme === "light" ? "moon" : "sun"),
+    );
   }
   updateThemeButton();
   const caregiver = button(
-    draft ? "Back to board" : "",
+    teacherEditing ? "Teacher dashboard" : draft ? "Back to board" : "",
     async () => {
+      if (teacherEditing) {
+        if (
+          hasUnsavedDraft() &&
+          !(await confirmChange("Discard unsaved classroom draft changes?"))
+        )
+          return;
+        stop();
+        draft = null;
+        location.assign(teacherDashboard());
+        return;
+      }
       if (draft) {
         if (
           hasUnsavedDraft() &&
@@ -490,14 +525,14 @@ function render() {
     },
     `button quiet caregiver-access ${draft ? "" : "icon-button"}`,
   );
-  if (!draft) {
+  if (!draft && !teacherEditing) {
     caregiver.append(renderSymbol("settings"));
     caregiver.setAttribute("aria-label", "Caregiver controls");
     caregiver.title = "Caregiver controls";
   }
   caregiver.disabled = arrangement !== null;
   controls.append(themeButton, caregiver, themeFeedback);
-  if (!draft) {
+  if (!draft && !teacherEditing) {
     const destination =
       board.tiles.find(
         (tile) =>
@@ -519,7 +554,13 @@ function render() {
   if (draft) {
     header.classList.add("editor-header");
     const context = el("div", "editor-context");
-    context.append(el("h1", "", "Edit board"));
+    context.append(
+      el(
+        "h1",
+        "",
+        teacherEditing ? `Edit ${teacherEditing.label}` : "Edit board",
+      ),
+    );
     if (activeBoardId === null)
       context.append(el("p", "editor-location", "Home board"));
     else context.append(navigation);
@@ -632,6 +673,12 @@ function render() {
   }
   root.append(shell);
   fullscreen.refresh();
+  if (teacherSaving)
+    root
+      .querySelectorAll<
+        HTMLInputElement | HTMLButtonElement | HTMLSelectElement
+      >("input,button,select")
+      .forEach((control) => (control.disabled = true));
 }
 function typeAndSpeak() {
   return createTypeAndSpeak({
@@ -667,7 +714,9 @@ function renderEditor(shell: HTMLElement, working: Board) {
   saveState.setAttribute("aria-live", "polite");
   const updateSaveState = () => {
     saveState.textContent = hasUnsavedDraft()
-      ? "Unsaved changes on this device"
+      ? teacherEditing
+        ? "Unsaved classroom draft changes"
+        : "Unsaved changes on this device"
       : "No unsaved changes";
   };
   updateSaveState();
@@ -677,15 +726,47 @@ function renderEditor(shell: HTMLElement, working: Board) {
     el(
       "p",
       "subtitle",
-      "Edit words below. Changes stay in a draft until you save. Save board applies them on this device and returns to your board.",
+      teacherEditing
+        ? "Changes stay in this draft until you save to the teacher workspace. Publish separately from the dashboard. The device board is unchanged."
+        : "Edit words below. Changes stay in a draft until you save. Save board applies them on this device and returns to your board.",
     ),
   );
   const tools = el("div", "editor-toolbar");
   const saveTools = el("div", "editor-toolbar editor-save-tools");
   saveTools.append(
     button(
-      "Save board",
-      () => {
+      teacherEditing ? "Save classroom draft" : "Save board",
+      async () => {
+        if (teacherEditing) {
+          if (teacherSaving) return;
+          teacherSaving = true;
+          document
+            .querySelectorAll<
+              HTMLInputElement | HTMLButtonElement | HTMLSelectElement
+            >("#app input, #app button, #app select")
+            .forEach((control) => (control.disabled = true));
+          try {
+            const saved = await teacherClient.save(
+              teacherEditing.id,
+              teacherEditing.revision,
+              structuredClone(working),
+            );
+            teacherEditing = saved;
+            board = saved.board;
+            draft = null;
+            location.assign(teacherDashboard());
+          } catch (error) {
+            teacherSaving = false;
+            render();
+            status(
+              error instanceof Error
+                ? error.message
+                : "The classroom draft could not be saved. Export it before leaving.",
+              true,
+            );
+          }
+          return;
+        }
         if (persist(working)) {
           stop();
           draft = null;
@@ -765,7 +846,10 @@ function renderEditor(shell: HTMLElement, working: Board) {
   const notice = el(
     "p",
     "notice",
-    storageError || "Changes stay on this device until you choose to save an account copy. Export a backup to move your board.",
+    storageError ||
+      (teacherEditing
+        ? "Save classroom draft stores these changes in your teacher workspace. Publish separately to make a version available to linked devices."
+        : "Changes stay on this device until you choose to save an account copy. Export a backup to move your board."),
   );
   notice.id = "status";
   notice.role = "status";
@@ -798,15 +882,16 @@ function renderEditor(shell: HTMLElement, working: Board) {
       "Board tile size is included in exports and account copies. The device size below can override it. Size changes never change columns. Narrower screens may need horizontal scrolling.",
     ),
   );
-  display.append(
-    createDeviceLayoutControls({
-      layout: draftDeviceLayout,
-      onChange: (next) => {
-        draftDeviceLayout = next;
-        updateSaveState();
-      },
-    }),
-  );
+  if (!teacherEditing)
+    display.append(
+      createDeviceLayoutControls({
+        layout: draftDeviceLayout,
+        onChange: (next) => {
+          draftDeviceLayout = next;
+          updateSaveState();
+        },
+      }),
+    );
   const voiceLabel = el("label", "", "Device voice for speech and fallback");
   const select = el("select");
   select.setAttribute("aria-label", "Device voice for speech and fallback");
@@ -882,23 +967,38 @@ function renderEditor(shell: HTMLElement, working: Board) {
   displayGroup.append(display);
   voiceGroup.append(settings);
   shell.append(displayGroup, voiceGroup);
-  backups.append(
-    createAccountPanel({
-      working,
-      confirm: confirmChange,
-      applyBoard: (next: Board) => {
-        stop();
-        draft = next;
-        replacementAuthorizedDraft = next;
-        activeBoardId = null;
-        render();
-        status(
-          "Account board loaded into the draft. Save board to apply it on this device.",
-        );
-        focusEditorAction("Save board");
-      },
-    }),
-  );
+  if (!teacherEditing)
+    backups.append(
+      createAccountPanel({
+        working,
+        confirm: confirmChange,
+        applyBoard: (next: Board) => {
+          stop();
+          draft = next;
+          replacementAuthorizedDraft = next;
+          activeBoardId = null;
+          render();
+          status(
+            "Account board loaded into the draft. Save board to apply it on this device.",
+          );
+          focusEditorAction("Save board");
+        },
+      }),
+      createClassroomPanel({
+        confirm: confirmChange,
+        applyBoard: (next) => {
+          stop();
+          draft = next;
+          replacementAuthorizedDraft = next;
+          activeBoardId = null;
+          render();
+          status(
+            "Published classroom board loaded into the draft. Save board applies it on this device.",
+          );
+          focusEditorAction("Save board");
+        },
+      }),
+    );
   shell.append(backups, el("h2", "", "Words and categories"));
   const list = el("div", "edit-list");
   page.tiles.forEach((tile, i) => {
@@ -1002,7 +1102,9 @@ function renderEditor(shell: HTMLElement, working: Board) {
     el(
       "p",
       "",
-      "Your local board stays in this browser unless you choose to save a copy to your account. Clearing site data removes local words. Caregiver mode is an editing boundary, not a security lock.",
+      teacherEditing
+        ? "Classroom drafts and published vocabulary are stored on the classroom server. Spoken messages are not collected. Learners keep their working boards on their own devices."
+        : "Your local board stays in this browser unless you choose to save a copy to your account. Clearing site data removes local words. Caregiver mode is an editing boundary, not a security lock.",
     ),
     button(
       "Reset to starter words",
@@ -1335,4 +1437,36 @@ if (supported) {
   window.speechSynthesis.addEventListener("voiceschanged", refresh);
   refresh();
 }
-render();
+if (teacherBoardRequest) {
+  root.append(el("p", "notice", "Loading classroom board…"));
+  void (async () => {
+    try {
+      const profileId = id(teacherBoardRequest);
+      if (!(await accountClient.restoreSession()))
+        throw new Error("Sign in to the teacher workspace to open this board.");
+      teacherEditing = await teacherClient.profile(profileId);
+      board = structuredClone(teacherEditing.board);
+      draft =
+        teacherParameters.get("preview") === "1"
+          ? null
+          : structuredClone(board);
+      storageError = "";
+      storageBlocked = false;
+      activeBoardId = null;
+      render();
+    } catch (error) {
+      root.replaceChildren(
+        el(
+          "p",
+          "notice error",
+          error instanceof Error
+            ? error.message
+            : "The classroom board could not be loaded.",
+        ),
+      );
+      const back = el("a", "button", "Open teacher workspace");
+      back.href = "/teacher.html";
+      root.append(back);
+    }
+  })();
+} else render();

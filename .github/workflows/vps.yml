@@ -17,7 +17,7 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm audit --audit-level=moderate
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium webkit
       - run: docker build -t sayboard:publication-review .
       - run: node scripts/verify-vps.mjs
       - uses: actions/upload-artifact@v4
