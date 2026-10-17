@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 
 // Uses the actual app, authentication cookies, API and SQLite store. The caller
 // provides synthetic credentials from an isolated test installation.
@@ -59,29 +59,73 @@ export async function checkClassroomFlow({
     });
   });
   const errors = [];
-  const offlineTransportErrors = [];
+  const reloadTransportErrors = [];
+  const diagnostics = { requestFailures: [], pageErrors: [], reloads: [] };
+  const requestStarts = new WeakMap();
   let deviceOffline = false;
+  let deviceReloading = false;
   const setDeviceOffline = async (offline) => {
     deviceOffline = offline;
     await device.setOffline(offline);
   };
   const page = await teacher.newPage();
   const tablet = await device.newPage();
+  const reloadDevice = async (label) => {
+    const reload = { startedAt: Date.now(), label, finishedAt: null };
+    diagnostics.reloads.push(reload);
+    deviceReloading = true;
+    try {
+      await tablet.reload();
+      await tablet
+        .getByRole("button", { name: "Say " + label, exact: true })
+        .waitFor();
+    } finally {
+      reload.finishedAt = Date.now();
+      deviceReloading = false;
+    }
+  };
   for (const current of [page, tablet]) {
     current.setDefaultTimeout(15000);
+    current.on("request", (request) => {
+      requestStarts.set(request, {
+        at: Date.now(),
+        offline: current === tablet && deviceOffline,
+      });
+    });
+    current.on("requestfailed", (request) => {
+      diagnostics.requestFailures.push({
+        at: Date.now(),
+        page: current.url(),
+        url: request.url(),
+        failure: request.failure()?.errorText,
+        start: requestStarts.get(request),
+        offline: current === tablet && deviceOffline,
+      });
+    });
     current.on("pageerror", (error) => {
-      // WebKit emits a pageerror for some intentionally failed offline fetches,
-      // even when the application handles the rejected fetch. Keep this narrow:
-      // only its device-endpoint transport message during our offline phase.
+      diagnostics.pageErrors.push({
+        at: Date.now(),
+        page: current.url(),
+        message: error.message,
+        stack: error.stack,
+        device: current === tablet,
+        offline: deviceOffline,
+        reloading: deviceReloading,
+      });
+      // WebKit can report a caught fetch from the retiring document as a page
+      // error during reload. Accept only that exact same-origin sync transport
+      // message inside a reload explicitly initiated by this fixture.
       if (
         current === tablet &&
-        deviceOffline &&
+        deviceReloading &&
         engine === "webkit" &&
-        /\/api\/device\/(?:sync|board) due to access control checks\.$/.test(
-          error.message,
+        error.message ===
+          `/${new URL(origin).host}/api/device/sync due to access control checks.` &&
+        error.stack?.startsWith(
+          `Fetch API cannot load ${origin}/api/device/sync due to access control checks.`,
         )
       ) {
-        offlineTransportErrors.push(error.message);
+        reloadTransportErrors.push(error.message);
         return;
       }
       errors.push(error.message);
@@ -345,10 +389,7 @@ export async function checkClassroomFlow({
     };
 
     await applied("Published one");
-    await tablet.reload();
-    await tablet
-      .getByRole("button", { name: "Say Published one", exact: true })
-      .waitFor();
+    await reloadDevice("Published one");
     assert.equal(
       (await device.request.get(origin + "/api/classrooms")).status(),
       401,
@@ -375,10 +416,7 @@ export async function checkClassroomFlow({
         fullPage: true,
       });
     }
-    await tablet.reload();
-    await tablet
-      .getByRole("button", { name: "Say Published two", exact: true })
-      .waitFor();
+    await reloadDevice("Published two");
 
     await page
       .getByRole("button", { name: "Restore version 1 to draft", exact: true })
@@ -601,10 +639,7 @@ export async function checkClassroomFlow({
       appliedBoard,
       "Revocation must stop new versions without deleting the working board",
     );
-    await tablet.reload();
-    await tablet
-      .getByRole("button", { name: "Say After category removed", exact: true })
-      .waitFor();
+    await reloadDevice("After category removed");
     await setDeviceOffline(true);
     assert.ok(
       await tablet
@@ -632,6 +667,12 @@ export async function checkClassroomFlow({
       (await teacher.request.get(origin + "/api/classrooms")).status(),
       401,
     );
+    if (artifactDirectory) {
+      await writeFile(
+        artifactDirectory + `/classroom-diagnostics-${engine}.json`,
+        JSON.stringify(diagnostics, null, 2) + "\n",
+      );
+    }
     assert.deepEqual(errors, []);
     return {
       engine,
@@ -662,12 +703,16 @@ export async function checkClassroomFlow({
       classroomDeleted: true,
       logout: true,
       automaticUpdateLatencyMs: latencies,
-      expectedWebkitOfflineTransportErrors: offlineTransportErrors.length,
+      expectedWebkitReloadTransportErrors: reloadTransportErrors.length,
       errors,
     };
   } catch (error) {
     if (artifactDirectory) {
       await mkdir(artifactDirectory, { recursive: true });
+      await writeFile(
+        artifactDirectory + `/classroom-failure-${engine}.json`,
+        JSON.stringify(diagnostics, null, 2) + "\n",
+      );
       await page.screenshot({
         path: artifactDirectory + `/teacher-failure-${engine}.png`,
         fullPage: true,
