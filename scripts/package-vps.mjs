@@ -58,6 +58,7 @@ try {
     "dist/source/current.json",
     "server-dist/server.cjs",
     "server-dist/manage.cjs",
+    "server-dist/THIRD-PARTY-NOTICES.txt",
   ])
     await stat(resolve(root, file));
   await cp(resolve(root, "dist"), resolve(temporary, "dist"), {

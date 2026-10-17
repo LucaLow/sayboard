@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, webkit, request } from "playwright";
 import { checkClassroomFlow } from "../tests/classroom-flow.browser.mjs";
+import { checkTeacherOnboarding } from "../tests/teacher-onboarding.browser.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const temporary = await mkdtemp(join(tmpdir(), "sayboard-vps-check-"));
@@ -137,6 +138,7 @@ try {
     );
   for (const user of ["teacher", "other_teacher"])
     await maintain(["create", user], password);
+  await maintain(["enable-invites", "teacher"]);
   const signIn = async (context, username, secret = password) => {
     const response = await context.post("/api/auth/login", {
       headers: { Origin: origin },
@@ -273,6 +275,7 @@ try {
     noSessionTokensInLocalStorage: true,
   };
   report.classrooms = [];
+  report.onboarding = [];
   for (const [engine, type] of [
     ["chromium", chromium],
     ["webkit", webkit],
@@ -289,6 +292,30 @@ try {
           artifactDirectory: join(root, "test-results/publication/classrooms"),
         }),
       );
+      // Independent fixture scenarios intentionally repeat sign-in. Reset only
+      // their disposable database budgets; production limits stay unchanged.
+      await compose(
+        "exec",
+        "-T",
+        "app",
+        "node",
+        "-e",
+        "const {DatabaseSync}=require('node:sqlite'); const db=new DatabaseSync(process.env.SAYBOARD_DATABASE_PATH); db.exec('DELETE FROM login_limits'); db.close();",
+      );
+      const onboarding = await checkTeacherOnboarding({
+        browser: classroomBrowser,
+        origin,
+        username: "teacher",
+        password,
+        engine,
+        artifactDirectory: join(root, "test-results/publication/classrooms"),
+      });
+      report.onboarding.push(onboarding);
+      await maintain([
+        "delete",
+        onboarding.invited,
+        `--confirm-delete=${onboarding.invited}`,
+      ]);
     } finally {
       await classroomBrowser.close();
     }

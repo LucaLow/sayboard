@@ -3,6 +3,7 @@ import { deviceApi, teacherApi } from "./classroom-api.js";
 import { parseBoard } from "../src/board.js";
 import type { ApiConfig } from "./config.js";
 import type { Store } from "./store-contract.js";
+import { emailAddress, type Mailer } from "./mail.js";
 import {
   csrfToken,
   hashPassword,
@@ -89,6 +90,7 @@ export async function createApi(
   store: Store,
   config: ApiConfig,
   now = Date.now,
+  mail: Mailer | null = null,
 ) {
   const cookieName =
     config.kind === "hosted" ? "__Host-sayboard_session" : "sayboard_session";
@@ -110,6 +112,58 @@ export async function createApi(
       if (rejection) return rejection;
       const mutating = !["GET", "HEAD", "OPTIONS"].includes(request.method);
       if (url.search) throw new HttpError(400, "query_not_supported");
+      if (
+        ["/api/auth/activation", "/api/auth/activation/inspect"].includes(
+          url.pathname,
+        )
+      ) {
+        if (request.method !== "POST")
+          throw new HttpError(405, "method_not_allowed", { Allow: "POST" });
+        if (!store.onboarding)
+          throw new HttpError(503, "onboarding_unavailable");
+        if (!(await store.allowLogin(`activation:${peer}`, now())))
+          return json(
+            429,
+            { error: "too_many_attempts" },
+            { "Retry-After": "300" },
+          );
+        const input = await body(request);
+        if (
+          typeof input !== "object" ||
+          input === null ||
+          !("token" in input) ||
+          typeof input.token !== "string" ||
+          !/^[a-f0-9]{64}$/.test(input.token)
+        )
+          throw new HttpError(400, "invalid_invitation");
+        const hash = tokenHash(input.token);
+        const invitation = store.onboarding.inspect(hash, now());
+        if (url.pathname.endsWith("/inspect")) return json(200, invitation);
+        if (
+          !("password" in input) ||
+          typeof input.password !== "string" ||
+          input.password.length < 16 ||
+          input.password.length > 256
+        )
+          throw new HttpError(400, "invalid_password");
+        if (passwordChecks >= passwordConcurrency)
+          return json(
+            429,
+            { error: "too_many_attempts" },
+            { "Retry-After": "300" },
+          );
+        passwordChecks++;
+        try {
+          store.onboarding.accept(
+            hash,
+            await hashPassword(input.password),
+            now(),
+          );
+        } finally {
+          passwordChecks--;
+        }
+        return json(200, { ok: true, username: invitation.username });
+      }
       if (url.pathname.startsWith("/api/device/"))
         return await deviceApi(request, store, config, peer, now());
       const classroomRequest =
@@ -122,17 +176,20 @@ export async function createApi(
         "/api/auth/session",
         "/api/auth/logout",
         "/api/board",
+        "/api/invitations",
       ];
       if (!known.includes(url.pathname) && !classroomRequest)
         throw new HttpError(404, "not_found");
       const allowed =
-        url.pathname === "/api/board"
-          ? ["GET", "PUT"]
-          : ["/api/auth/session", "/api/auth/capabilities"].includes(
-                url.pathname,
-              )
-            ? ["GET"]
-            : ["POST"];
+        url.pathname === "/api/invitations"
+          ? ["GET", "POST", "DELETE"]
+          : url.pathname === "/api/board"
+            ? ["GET", "PUT"]
+            : ["/api/auth/session", "/api/auth/capabilities"].includes(
+                  url.pathname,
+                )
+              ? ["GET"]
+              : ["POST"];
       if (!classroomRequest && !allowed.includes(request.method))
         return json(
           405,
@@ -213,6 +270,81 @@ export async function createApi(
       if (url.pathname === "/api/auth/logout") {
         await store.deleteSession(tokenHash(token));
         return json(200, { ok: true }, { "Set-Cookie": cookie("", 0) });
+      }
+      if (url.pathname === "/api/invitations") {
+        const onboarding = store.onboarding;
+        const operator = !!onboarding?.isOperator(session.account.id);
+        if (request.method === "GET")
+          return json(200, { operator, emailEnabled: mail !== null });
+        if (!onboarding || !operator)
+          throw new HttpError(403, "operator_required");
+        if (!(await store.allowLogin(`invite:${session.account.id}`, now())))
+          return json(
+            429,
+            { error: "too_many_attempts" },
+            { "Retry-After": "300" },
+          );
+        const input = await body(request);
+        if (request.method === "DELETE") {
+          if (
+            typeof input !== "object" ||
+            input === null ||
+            !("username" in input) ||
+            typeof input.username !== "string" ||
+            !/^[a-zA-Z0-9_-]{1,64}$/.test(input.username)
+          )
+            throw new HttpError(400, "invalid_invitation");
+          onboarding.cancel(session.account.id, input.username);
+          return json(200, { ok: true });
+        }
+        if (
+          typeof input !== "object" ||
+          input === null ||
+          !("username" in input) ||
+          typeof input.username !== "string" ||
+          !/^[a-zA-Z0-9_-]{1,64}$/.test(input.username) ||
+          input.username.toLowerCase() === "admin" ||
+          !("kind" in input) ||
+          (input.kind !== "invite" && input.kind !== "reset") ||
+          ("delivery" in input &&
+            input.delivery !== "email" &&
+            input.delivery !== "link")
+        )
+          throw new HttpError(400, "invalid_invitation");
+        const token = newToken();
+        let email: string | null = null;
+        if ("delivery" in input && input.delivery === "email") {
+          if (!mail) throw new HttpError(503, "email_unconfigured");
+          try {
+            email = emailAddress("email" in input ? input.email : undefined);
+          } catch {
+            throw new HttpError(400, "invalid_email");
+          }
+        }
+        const invitation = onboarding.issue(
+          session.account.id,
+          input.username,
+          email,
+          input.kind,
+          tokenHash(token),
+          now(),
+        );
+        const url = `${config.origin}/teacher.html#activate=${token}`;
+        let emailStatus: "not_requested" | "accepted" | "failed" =
+          "not_requested";
+        if (email && mail) {
+          try {
+            await mail.send({ ...invitation, to: email, url });
+            emailStatus = "accepted";
+          } catch {
+            emailStatus = "failed";
+          }
+        }
+        return json(201, {
+          ...invitation,
+          url,
+          emailStatus,
+        });
       }
       if (classroomRequest)
         return await teacherApi(

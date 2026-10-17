@@ -7,6 +7,12 @@ services:
       SAYBOARD_AUTH_ENABLED: ${SAYBOARD_AUTH_ENABLED:-0}
       SAYBOARD_STORAGE: sqlite
       SAYBOARD_DATABASE_PATH: /data/sayboard.sqlite
+      SAYBOARD_SMTP_HOST: ${SAYBOARD_SMTP_HOST:-}
+      SAYBOARD_SMTP_PORT: ${SAYBOARD_SMTP_PORT:-587}
+      SAYBOARD_SMTP_USER: ${SAYBOARD_SMTP_USER:-}
+      SAYBOARD_SMTP_PASSWORD: ${SAYBOARD_SMTP_PASSWORD:-}
+      SAYBOARD_EMAIL_FROM: ${SAYBOARD_EMAIL_FROM:-}
+      SAYBOARD_EMAIL_REPLY_TO: ${SAYBOARD_EMAIL_REPLY_TO:-}
     volumes:
       - boards:/data
     ports:
@@ -14,7 +20,13 @@ services:
       - "443:443"
     stop_grace_period: 30s
     healthcheck:
-      test: ["CMD", "node", "-e", "require('node:http').get({host:'127.0.0.1',port:8080,path:'/healthz',headers:{Host:new URL(process.env.SAYBOARD_ORIGIN).host}},r=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('node:http').get({host:'127.0.0.1',port:8080,path:'/healthz',headers:{Host:new URL(process.env.SAYBOARD_ORIGIN).host}},r=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))",
+        ]
       interval: 30s
       timeout: 5s
       retries: 3

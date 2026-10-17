@@ -42,3 +42,11 @@ The device API has separate HttpOnly credentials and CSRF protection. It cannot 
 Storage limits bound a pilot account to 10 classrooms, 30 profiles per classroom and 64 MiB of combined draft and version payloads. A profile can have 200 published versions and 20 active linked devices. Pairing attempts share a persisted 10-attempt, five-minute peer budget. The small-VPS configuration admits one password hash at a time while keeping the scrypt cost unchanged.
 
 Billing does not participate in local communication or data ownership. No subscription code is included in this pilot. See [PROJECT.md](PROJECT.md).
+
+## Teacher invitations
+
+`backend/onboarding.ts` owns organiser permissions and SQLite invitation records. Organiser permission is granted through the maintenance CLI, never inferred from a username or client payload. `POST /api/invitations` requires an authenticated organiser, exact Origin and CSRF token. Unauthenticated activation requires a random 256-bit token whose hash alone is stored. Tokens travel in the invitation URL fragment, are removed from the address bar when opened, and are submitted only in bounded JSON bodies. Activation and login share the password-hashing concurrency cap.
+
+Invitation acceptance is a transaction that consumes the token and creates an ordinary teacher account. Reset acceptance updates the existing password and revokes its sessions. Expiry, reissue and cancellation invalidate unused links. Activation attempts and organiser invitation requests have persisted rate budgets. There is no public signup or self-service recovery endpoint.
+
+`backend/mail.ts` supplies optional SMTP transport with required TLS, certificate validation, disabled protocol logging and no file or URL attachments. It sends only an explicitly requested invitation or reset message. A delivery failure preserves the private link as a fallback and returns no provider error details. SMTP configuration remains server-side. Resend and Postmark can use the same transport; the self-hosted application has no provider SDK dependency.

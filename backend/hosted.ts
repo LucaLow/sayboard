@@ -3,6 +3,7 @@ import { hostedConfig } from "./config.js";
 import { createApi, requestRejection } from "./api.js";
 import { tokenHash } from "./password.js";
 import type { Store } from "./store-contract.js";
+import { smtpMailer } from "./mail.js";
 
 const unavailable = (error: string) =>
   new Response(JSON.stringify({ error }), {
@@ -39,7 +40,7 @@ export function createHostedHandler(
     initializedOrigin = config.origin;
     pending ??= Promise.resolve()
       .then(getStore)
-      .then((store) => createApi(store, config, now));
+      .then((store) => createApi(store, config, now, smtpMailer(env)));
     const attempt = pending;
     try {
       const api = await attempt;
@@ -50,4 +51,3 @@ export function createHostedHandler(
     }
   };
 }
-

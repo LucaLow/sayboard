@@ -12,6 +12,7 @@ export default defineConfig({
       input: {
         board: new URL("./index.html", import.meta.url).pathname,
         teacher: new URL("./teacher.html", import.meta.url).pathname,
+        move: new URL("./move-board.html", import.meta.url).pathname,
       },
       output: {
         manualChunks(id) {

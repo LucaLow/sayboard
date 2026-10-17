@@ -5,12 +5,14 @@ import { parseBoard, serializeBoard, type Board } from "../src/board.js";
 import { randomUUID } from "node:crypto";
 import { hashPassword } from "./password.js";
 import { SqliteClassrooms } from "./classroom-store.js";
+import { SqliteOnboarding } from "./onboarding.js";
 
 import type { Account, Session, SavedBoard, Store } from "./store-contract.js";
 
 export class SqliteStore implements Store {
   private db: DatabaseSync;
   readonly classrooms: SqliteClassrooms;
+  readonly onboarding: SqliteOnboarding;
   constructor(path: string) {
     if (path !== ":memory:")
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
@@ -39,6 +41,7 @@ export class SqliteStore implements Store {
       ) STRICT;
     `);
     this.classrooms = new SqliteClassrooms(this.db);
+    this.onboarding = new SqliteOnboarding(this.db);
   }
   close() {
     this.db.close();
@@ -49,10 +52,18 @@ export class SqliteStore implements Store {
   }
   deleteAccount(username: string): void {
     // Foreign keys also revoke sessions, device links and classroom records.
-    const result = this.db
-      .prepare("DELETE FROM accounts WHERE username = ? AND local_only = 0")
-      .run(username);
-    if (result.changes !== 1) throw new Error("Account not found");
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const result = this.db
+        .prepare("DELETE FROM accounts WHERE username = ? AND local_only = 0")
+        .run(username);
+      if (result.changes !== 1) throw new Error("Account not found");
+      this.onboarding.removeInvitations(username);
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
   async resetPassword(username: string, password: string): Promise<void> {
     const hash = await hashPassword(password);

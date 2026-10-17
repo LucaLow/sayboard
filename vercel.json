@@ -1,0 +1,38 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "redirects": [
+    {
+      "source": "/teacher.html",
+      "has": [
+        {
+          "type": "host",
+          "value": "sayboard.org"
+        }
+      ],
+      "destination": "https://classroom.sayboard.org/teacher.html",
+      "permanent": true
+    },
+    {
+      "source": "/teacher.html",
+      "has": [
+        {
+          "type": "host",
+          "value": "sayboard.vercel.app"
+        }
+      ],
+      "destination": "https://classroom.sayboard.org/teacher.html",
+      "permanent": true
+    },
+    {
+      "source": "/:path((?!source(?:/|$)|assets(?:/|$)|move-board\\.html$).*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "sayboard.vercel.app"
+        }
+      ],
+      "destination": "https://sayboard.org/:path",
+      "permanent": true
+    }
+  ]
+}

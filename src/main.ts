@@ -1000,6 +1000,22 @@ function renderEditor(shell: HTMLElement, working: Board) {
       }),
     );
   shell.append(backups, el("h2", "", "Words and categories"));
+  if (location.hostname === "sayboard.org") {
+    const migration = el(
+      "a",
+      "button",
+      "Recover a board from the old website address",
+    );
+    migration.href = "https://sayboard.vercel.app/move-board.html";
+    backups.append(
+      el(
+        "p",
+        "",
+        "Previously used sayboard.vercel.app? Your board is still stored under that address.",
+      ),
+      migration,
+    );
+  }
   const list = el("div", "edit-list");
   page.tiles.forEach((tile, i) => {
     const row = el("div", "edit-row");
