@@ -418,6 +418,7 @@ export async function checkClassroomFlow({
     }
     await reloadDevice("Published two");
 
+    await page.locator(".teacher-versions > summary").click();
     await page
       .getByRole("button", { name: "Restore version 1 to draft", exact: true })
       .click();

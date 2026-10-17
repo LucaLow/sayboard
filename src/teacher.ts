@@ -518,22 +518,22 @@ function render() {
       el(
         "p",
         "teacher-intro",
-        "Prepare changes in the draft, then publish. Linked learner devices receive each publication automatically when communication and caregiver editing have finished.",
+        "A board that grows with your learner. Edit the draft, preview it, then publish when you’re ready.",
       ),
       status,
     );
     const progress = el("ol", "teacher-progress");
     progress.setAttribute("aria-label", "Board setup");
     for (const [title, detail] of [
-      ["Prepare", `Draft revision ${current.revision}`],
+      ["1. Prepare", `Draft revision ${current.revision}`],
       [
-        "Publish",
+        "2. Publish",
         current.publishedVersion
           ? `Version ${current.publishedVersion} available`
           : "Not published yet",
       ],
       [
-        "Link once",
+        "3. Connect",
         current.devices.length
           ? `${current.devices.length} linked device${current.devices.length === 1 ? "" : "s"}`
           : "No devices linked yet",
@@ -541,13 +541,13 @@ function render() {
     ]) {
       const step = el("li");
       const description = el("span", "", detail);
-      if (title === "Link once") description.dataset.deviceCount = "";
+      if (title === "3. Connect") description.dataset.deviceCount = "";
       step.append(el("strong", "", title), description);
       progress.append(step);
     }
     shell.append(progress);
     const grid = el("div", "teacher-profile-grid");
-    const draft = el("section", "teacher-card");
+    const draft = el("section", "teacher-card teacher-draft");
     const homeTiles = current.board.tiles.filter(Boolean).length;
     draft.append(
       el("p", "teacher-eyebrow", "DRAFT"),
@@ -565,8 +565,24 @@ function render() {
       link("Preview board", editor + "&preview=1"),
       button("Export draft", () => exportProfile(current)),
     );
-    draft.append(
-      actions,
+    const boardPreview = el("div", "teacher-board-preview");
+    boardPreview.setAttribute("aria-label", "Saved draft vocabulary preview");
+    for (const tile of current.board.tiles.slice(0, 10)) {
+      const previewTile = el(
+        "div",
+        tile
+          ? `teacher-preview-tile ${tile.tone}`
+          : "teacher-preview-tile empty",
+      );
+      if (tile)
+        previewTile.append(renderSymbol(tile.icon), el("span", "", tile.label));
+      else previewTile.setAttribute("aria-label", "Empty slot");
+      boardPreview.append(previewTile);
+    }
+    draft.append(boardPreview, actions);
+    const duplicate = el("details", "teacher-secondary-tools");
+    duplicate.append(
+      el("summary", "", "Copy this board for another learner"),
       form(
         "duplicate",
         "New profile alias",
@@ -585,6 +601,7 @@ function render() {
         },
       ),
     );
+    draft.append(duplicate);
     grid.append(draft);
     const publish = el("section", "teacher-card teacher-publication");
     publish.append(
@@ -599,7 +616,7 @@ function render() {
       el(
         "p",
         "",
-        "Publishing sends the saved draft to linked devices automatically. Devices keep their current board until the new version is saved safely and communication is idle.",
+        "Publish the saved draft to linked devices. Each learner keeps their current board until they finish speaking or editing.",
       ),
       action(
         "Publish saved draft",
@@ -628,7 +645,7 @@ function render() {
       el(
         "p",
         "",
-        "Pair each learner’s device once. After that, publish from this dashboard without touching the learner’s device.",
+        "Link once. Future board updates arrive automatically, when the learner is ready.",
       ),
     );
     const reports = el("div", "teacher-device-reports");
@@ -687,8 +704,15 @@ function render() {
     }
     devices.append(setup);
     grid.append(devices);
-    const versions = el("section", "teacher-card");
-    versions.append(el("h2", "", "Published versions"));
+    const versions = el("details", "teacher-card teacher-versions");
+    versions.append(
+      el("summary", "", "Published versions"),
+      el(
+        "p",
+        "teacher-muted",
+        "Restore an earlier version to your draft. Preview and publish it when you’re ready.",
+      ),
+    );
     if (!current.versions.length)
       versions.append(
         el(

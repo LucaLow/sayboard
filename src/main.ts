@@ -756,6 +756,7 @@ function focusEditorRow(index: number, preferred = "button") {
       ?.focus();
 }
 function renderEditor(shell: HTMLElement, working: Board) {
+  shell.classList.add("editor-workspace");
   const page = boardPage(working, activeBoardId);
   const header = shell.querySelector(".header");
   const saveState = el("p", "editor-save-state");
@@ -777,7 +778,7 @@ function renderEditor(shell: HTMLElement, working: Board) {
       "subtitle",
       teacherEditing
         ? "Changes stay in this draft until you save to the teacher workspace. Publish separately from the dashboard. The device board is unchanged."
-        : "Edit words below. Changes stay in a draft until you save. Save board applies them on this device and returns to your board.",
+        : "Make this board work for the person using it. Save your changes when you’re ready to return to the board.",
     ),
   );
   const tools = el("div", "editor-toolbar");
@@ -887,7 +888,6 @@ function renderEditor(shell: HTMLElement, working: Board) {
     upload,
   );
   backups.append(backupTools);
-  shell.append(tools);
   const notice = el(
     "p",
     "notice",
@@ -924,7 +924,7 @@ function renderEditor(shell: HTMLElement, working: Board) {
     el(
       "p",
       "",
-      "Board tile size is included in exports and account copies. The device size below can override it. Size changes never change columns. Narrower screens may need horizontal scrolling.",
+      "This size travels with the board in backups. You can choose a different size for this device below. Columns stay fixed when tile size changes.",
     ),
   );
   if (!teacherEditing)
@@ -1011,7 +1011,7 @@ function renderEditor(shell: HTMLElement, working: Board) {
   );
   displayGroup.append(display);
   voiceGroup.append(settings);
-  shell.append(displayGroup, voiceGroup);
+
   if (!teacherEditing)
     backups.append(
       createAccountPanel({
@@ -1043,7 +1043,78 @@ function renderEditor(shell: HTMLElement, working: Board) {
     classroomPanelCleanup = classroomPanel.dispose;
     backups.append(classroomPanel.element);
   }
-  shell.append(backups, el("h2", "", "Words and categories"));
+  const workspace = el("div", "editor-workspace-layout");
+  const navigation = el("nav", "editor-section-nav");
+  navigation.setAttribute("aria-label", "Board editor sections");
+  navigation.append(el("p", "eyebrow", "MAKE IT YOURS"));
+  const content = el("div", "editor-workspace-content");
+  const words = el("section", "editor-words-section");
+  words.id = "editor-words";
+  const wordsHeading = el("h2", "", "Words and categories");
+  words.append(
+    wordsHeading,
+    el(
+      "p",
+      "editor-section-description",
+      "Choose the words that matter. Empty slots keep familiar words in place.",
+    ),
+    tools,
+  );
+  const sections = [
+    {
+      target: words,
+      label: "Words & categories",
+      icon: "message-circle",
+      help: "Build your vocabulary",
+      tone: "mint",
+    },
+    {
+      target: displayGroup,
+      label: "Display",
+      icon: "layout-grid",
+      help: "Tile size & device layout",
+      tone: "blue",
+    },
+    {
+      target: voiceGroup,
+      label: "Voice",
+      icon: "volume",
+      help: "Voice & speaking speed",
+      tone: "peach",
+    },
+    {
+      target: backups,
+      label: "Backup & transfer",
+      icon: "archive",
+      help: "Save, import & connect",
+      tone: "lavender",
+    },
+  ];
+  for (const [index, section] of sections.entries()) {
+    if (index > 0) section.target.id = `editor-section-${index}`;
+    const jump = el("a", "editor-section-link");
+    jump.href = `#${section.target.id}`;
+    const icon = el("span", `editor-nav-icon ${section.tone}`);
+    icon.append(renderSymbol(section.icon));
+    const text = el("span", "");
+    text.append(el("strong", "", section.label), el("small", "", section.help));
+    jump.append(icon, text);
+    jump.onclick = (event) => {
+      event.preventDefault();
+      if (section.target instanceof HTMLDetailsElement)
+        section.target.open = true;
+      section.target.scrollIntoView({ block: "start", behavior: "instant" });
+      const focusTarget =
+        section.target.querySelector<HTMLElement>("summary, h2");
+      if (focusTarget) {
+        if (focusTarget.tagName !== "SUMMARY") focusTarget.tabIndex = -1;
+        focusTarget.focus({ preventScroll: true });
+      }
+    };
+    navigation.append(jump);
+  }
+  workspace.append(navigation, content);
+  shell.append(workspace);
   if (location.hostname === "sayboard.org") {
     const migration = el(
       "a",
@@ -1139,7 +1210,8 @@ function renderEditor(shell: HTMLElement, working: Board) {
       );
     list.append(row);
   });
-  shell.append(list);
+  words.append(list);
+  content.append(words, displayGroup, voiceGroup, backups);
   shell
     .querySelectorAll<HTMLDetailsElement>(".settings-group")
     .forEach((group) => {
@@ -1185,7 +1257,7 @@ function renderEditor(shell: HTMLElement, working: Board) {
       "button danger",
     ),
   );
-  shell.append(safety);
+  content.append(safety);
 }
 function editTile(
   working: Board,

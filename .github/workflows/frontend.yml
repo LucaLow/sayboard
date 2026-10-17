@@ -50,6 +50,7 @@ jobs:
       - run: npm run test:free-core
       - run: node tests/move-board.browser.mjs
       - run: node tests/settings-editor.browser.mjs
+      - run: node tests/settings-section-navigation.browser.mjs
       - run: node tests/editor-navigation.browser.mjs
       - run: node tests/quick-add.browser.mjs
       - run: node tests/symbol-picker.browser.mjs
