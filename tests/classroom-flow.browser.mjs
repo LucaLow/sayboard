@@ -514,7 +514,19 @@ export async function checkClassroomFlow({
       );
     });
     await applied("After category removed");
-    await tablet.getByRole("heading", { name: "Home", exact: true }).waitFor();
+    await tablet
+      .getByRole("heading", { name: "Communication board", exact: true })
+      .waitFor();
+    assert.equal(
+      await tablet.getByRole("heading", { name: "Drink", exact: true }).count(),
+      0,
+    );
+    assert.equal(
+      await tablet
+        .getByRole("button", { name: "Back / Home", exact: true })
+        .count(),
+      0,
+    );
 
     if (artifactDirectory) {
       await tablet.screenshot({
