@@ -10,16 +10,23 @@ export type ProfileSummary = {
 export type ProfileDetail = ProfileSummary & {
   board: Board;
   versions: { number: number; createdAt: number }[];
-  devices: { id: string; name: string; expiresAt: number }[];
+  devices: {
+    id: string;
+    name: string;
+    expiresAt: number;
+    appliedVersion: number | null;
+    appliedAt: number | null;
+    lastSeenAt: number | null;
+  }[];
 };
 export type ClassroomDetail = Classroom & { profiles: ProfileSummary[] };
-export type DeviceBoard = {
+export type DeviceSync = {
   profileId: string;
   label: string;
   version: number;
-  board: Board | null;
   csrfToken: string;
 };
+export type DeviceBoard = DeviceSync & { board: Board | null };
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -89,16 +96,20 @@ export function parseProfileDetail(value: unknown): ProfileDetail {
         id: id(device.id),
         name: text(device.name),
         expiresAt: integer(device.expiresAt),
+        appliedVersion:
+          device.appliedVersion === null
+            ? null
+            : integer(device.appliedVersion),
+        appliedAt: device.appliedAt === null ? null : integer(device.appliedAt),
+        lastSeenAt:
+          device.lastSeenAt === null ? null : integer(device.lastSeenAt),
       };
     }),
   };
 }
-export function parseDeviceBoard(value: unknown): DeviceBoard {
+export function parseDeviceSync(value: unknown): DeviceSync {
   const row = record(value);
   const version = integer(row.version);
-  const board = row.board === null ? null : parseBoard(row.board);
-  if ((version === 0) !== (board === null))
-    throw new Error("Invalid classroom publication");
   if (
     typeof row.csrfToken !== "string" ||
     !/^[a-f0-9]{64}$/.test(row.csrfToken)
@@ -108,7 +119,14 @@ export function parseDeviceBoard(value: unknown): DeviceBoard {
     profileId: id(row.profileId),
     label: text(row.label),
     version,
-    board,
     csrfToken: row.csrfToken,
   };
+}
+export function parseDeviceBoard(value: unknown): DeviceBoard {
+  const row = record(value);
+  const sync = parseDeviceSync(row);
+  const board = row.board === null ? null : parseBoard(row.board);
+  if ((sync.version === 0) !== (board === null))
+    throw new Error("Invalid classroom publication");
+  return { ...sync, board };
 }

@@ -6,6 +6,7 @@ import {
   parseClassroomDetail,
   parseProfileDetail,
   parseDeviceBoard,
+  parseDeviceSync,
   integer,
   text,
 } from "./classroom-contract";
@@ -163,6 +164,12 @@ function parsedResult<T>(value: unknown, parse: (value: unknown) => T): T {
   return parsed(() => parse(value));
 }
 export const deviceClient = {
+  async sync() {
+    return parsedResult(await request("/api/device/sync"), parseDeviceSync);
+  },
+  async applied(version: number, csrf: string) {
+    await request("/api/device/applied", "POST", { version }, csrf);
+  },
   async pair(code: string) {
     await request("/api/device/pair", "POST", { code });
   },

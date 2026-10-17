@@ -65,6 +65,17 @@ export class SqliteClassrooms implements ClassroomStore {
       ) STRICT;
       CREATE INDEX IF NOT EXISTS devices_profile ON classroom_devices(profile_id);
     `);
+    // Additive migration keeps existing paired devices valid across upgrades.
+    const deviceColumns = new Set(
+      db
+        .prepare("PRAGMA table_info(classroom_devices)")
+        .all()
+        .map((row) => string(row.name)),
+    );
+    for (const column of ["applied_version", "applied_at", "last_seen_at"]) {
+      if (!deviceColumns.has(column))
+        db.exec(`ALTER TABLE classroom_devices ADD COLUMN ${column} INTEGER`);
+    }
   }
   private transaction<T>(run: () => T): T {
     this.db.exec("BEGIN IMMEDIATE");
@@ -168,13 +179,17 @@ export class SqliteClassrooms implements ClassroomStore {
         })),
       devices: this.db
         .prepare(
-          "SELECT id, name, expires_at FROM classroom_devices WHERE profile_id=? AND revoked_at IS NULL AND expires_at > ? ORDER BY rowid",
+          "SELECT id, name, expires_at, applied_version, applied_at, last_seen_at FROM classroom_devices WHERE profile_id=? AND revoked_at IS NULL AND expires_at > ? ORDER BY rowid",
         )
         .all(profileId, Date.now())
         .map((d) => ({
           id: string(d.id),
           name: string(d.name),
           expiresAt: number(d.expires_at),
+          appliedVersion:
+            d.applied_version === null ? null : number(d.applied_version),
+          appliedAt: d.applied_at === null ? null : number(d.applied_at),
+          lastSeenAt: d.last_seen_at === null ? null : number(d.last_seen_at),
         })),
     };
   }
@@ -304,7 +319,9 @@ export class SqliteClassrooms implements ClassroomStore {
         .get(codeHash, now);
       if (!pairing) return false;
       this.db
-        .prepare("INSERT INTO classroom_devices VALUES (?, ?, ?, ?, ?, NULL)")
+        .prepare(
+          "INSERT INTO classroom_devices (id, profile_id, name, token_hash, expires_at) VALUES (?, ?, ?, ?, ?)",
+        )
         .run(
           randomUUID(),
           string(pairing.profile_id),
@@ -318,13 +335,14 @@ export class SqliteClassrooms implements ClassroomStore {
   device(hash: string, now: number) {
     const row = this.db
       .prepare(
-        `SELECT p.id, p.label, p.published_version, v.payload
+        `SELECT p.id, p.label, p.published_version, v.payload, d.last_seen_at
       FROM classroom_devices d JOIN classroom_profiles p ON p.id=d.profile_id
       LEFT JOIN classroom_versions v ON v.profile_id=p.id AND v.number=p.published_version
       WHERE d.token_hash=? AND d.revoked_at IS NULL AND d.expires_at>?`,
       )
       .get(hash, now);
     if (!row) return null;
+    this.seen(hash, now, row.last_seen_at);
     return {
       profileId: string(row.id),
       label: string(row.label),
@@ -334,6 +352,54 @@ export class SqliteClassrooms implements ClassroomStore {
           ? null
           : parseBoard(JSON.parse(string(row.payload))),
     };
+  }
+  private seen(hash: string, now: number, previous: unknown) {
+    // Polling stays read-only between heartbeats, keeping WAL writes bounded on small VPSs.
+    if (previous === null || number(previous) <= now - 10_000)
+      this.db
+        .prepare(
+          "UPDATE classroom_devices SET last_seen_at=? WHERE token_hash=?",
+        )
+        .run(now, hash);
+  }
+  deviceSync(hash: string, now: number) {
+    const row = this.db
+      .prepare(
+        `SELECT p.id, p.label, p.published_version, d.last_seen_at
+      FROM classroom_devices d JOIN classroom_profiles p ON p.id=d.profile_id
+      WHERE d.token_hash=? AND d.revoked_at IS NULL AND d.expires_at>?`,
+      )
+      .get(hash, now);
+    if (!row) return null;
+    this.seen(hash, now, row.last_seen_at);
+    return {
+      profileId: string(row.id),
+      label: string(row.label),
+      version: number(row.published_version),
+    };
+  }
+  applied(hash: string, version: number, now: number) {
+    this.transaction(() => {
+      const device = this.deviceSync(hash, now);
+      if (!device) throw new HttpError(401, "device_unlinked");
+      if (
+        version < 1 ||
+        version > device.version ||
+        !this.db
+          .prepare(
+            "SELECT 1 FROM classroom_versions WHERE profile_id=? AND number=?",
+          )
+          .get(device.profileId, version)
+      )
+        throw new HttpError(400, "invalid_device_version");
+      // Retries and delayed receipts cannot move a device backwards or reset its apply time.
+      this.db
+        .prepare(
+          `UPDATE classroom_devices SET applied_version=?, applied_at=?
+        WHERE token_hash=? AND (applied_version IS NULL OR applied_version<?)`,
+        )
+        .run(version, now, hash, version);
+    });
   }
   unlink(hash: string) {
     this.db

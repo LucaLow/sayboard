@@ -23,6 +23,33 @@ export async function checkClassroomFlow({
     viewport: { width: 390, height: 844 },
     hasTouch: true,
   });
+  // Stub only the operating system's speech boundary, with an explicit held
+  // utterance so the test can prove a board is not rearranged during speech.
+  await device.addInitScript(() => {
+    window.__holdClassroomSpeech = false;
+    window.__classroomUtterance = null;
+    window.SpeechSynthesisUtterance = class {
+      constructor(text) {
+        this.text = text;
+      }
+    };
+    speechSynthesis.getVoices = () => [
+      {
+        name: "Synthetic local voice",
+        voiceURI: "synthetic-local",
+        localService: true,
+        lang: "en-AU",
+      },
+    ];
+    speechSynthesis.speak = (utterance) => {
+      utterance.onstart?.();
+      if (window.__holdClassroomSpeech) window.__classroomUtterance = utterance;
+      else utterance.onend?.();
+    };
+    speechSynthesis.cancel = () => {
+      window.__classroomUtterance = null;
+    };
+  });
   const errors = [];
   const page = await teacher.newPage();
   const tablet = await device.newPage();
@@ -43,47 +70,6 @@ export async function checkClassroomFlow({
       .locator("summary")
       .filter({ hasText: "Backup and transfer" })
       .click();
-  };
-  const applyPublication = async (check = false) => {
-    await editDevice();
-    if (check)
-      await tablet
-        .getByRole("button", {
-          name: "Check classroom connection",
-          exact: true,
-        })
-        .click();
-    const downloadPending = Promise.withResolvers();
-    const releaseDownload = Promise.withResolvers();
-    let publicationReads = 0;
-    await device.route("**/api/device/board", async (route) => {
-      publicationReads++;
-      if (publicationReads === 2) {
-        downloadPending.resolve();
-        await releaseDownload.promise;
-      }
-      await route.continue();
-    });
-    await tablet
-      .getByRole("button", { name: "Load published board", exact: true })
-      .click();
-    await confirm(tablet);
-    await downloadPending.promise;
-    try {
-      assert.equal(
-        await tablet
-          .getByRole("button", { name: "Save board", exact: true })
-          .isEnabled(),
-        false,
-        "Saving must wait for the publication download to finish",
-      );
-    } finally {
-      releaseDownload.resolve();
-    }
-    await tablet
-      .getByRole("button", { name: "Save board", exact: true })
-      .click();
-    await device.unroute("**/api/device/board");
   };
   try {
     await page.goto(origin + "/teacher.html");
@@ -208,7 +194,20 @@ export async function checkClassroomFlow({
       .click();
     const pairing = await page.locator(".teacher-pairing code").innerText();
     assert.match(pairing, /^[A-F0-9]{10}$/);
+    const unlinkedRequests = [];
+    const recordUnlinked = (request) => {
+      if (new URL(request.url()).pathname.startsWith("/api/device/"))
+        unlinkedRequests.push(request.url());
+    };
+    device.on("request", recordUnlinked);
     await tablet.goto(origin);
+    await new Promise((resolve) => setTimeout(resolve, 6500));
+    device.off("request", recordUnlinked);
+    assert.deepEqual(
+      unlinkedRequests,
+      [],
+      "An unlinked free board must not poll classroom services",
+    );
     await editDevice();
     const beforePairing = await tablet.evaluate(() =>
       localStorage.getItem("sayboard-v2"),
@@ -221,213 +220,347 @@ export async function checkClassroomFlow({
       .click();
     await confirm(tablet);
     await tablet
-      .getByRole("button", { name: "Load published board", exact: true })
+      .getByRole("button", { name: "Disconnect classroom device", exact: true })
       .waitFor();
     assert.equal(
       await tablet.evaluate(() => localStorage.getItem("sayboard-v2")),
       beforePairing,
-      "Linking must not replace or upload the working local board",
+      "Pairing must wait for the caregiver to return to the communication board",
     );
     await tablet
-      .getByRole("button", { name: "Load published board", exact: true })
+      .getByRole("button", { name: "Back to board", exact: true })
       .click();
-    await confirm(tablet);
-    assert.equal(
-      await tablet.evaluate(() => localStorage.getItem("sayboard-v2")),
-      beforePairing,
-      "Loading a publication must remain an unsaved draft",
-    );
-    await tablet
-      .getByRole("button", { name: "Save board", exact: true })
-      .click();
-    await tablet
-      .getByRole("button", { name: "Say Published one", exact: true })
-      .waitFor();
+    const session = await (
+      await teacher.request.get(origin + "/api/auth/session")
+    ).json();
+    const profilePath = origin + "/api/profiles/" + ids[1];
+    const headers = { Origin: origin, "X-CSRF-Token": session.csrfToken };
+    let expectedVersion = 1;
+    const profile = async () => {
+      const response = await teacher.request.get(profilePath);
+      assert.equal(response.status(), 200);
+      return response.json();
+    };
+    const persisted = () =>
+      tablet.evaluate(() => JSON.parse(localStorage.getItem("sayboard-v2")));
+    const hasLabel = (board, label) =>
+      [board, ...(board?.subBoards ?? [])].some((page) =>
+        page?.tiles.some((tile) => tile?.label === label),
+      );
+    const waitUntil = async (check, message, timeout = 20000) => {
+      const deadline = Date.now() + timeout;
+      while (Date.now() < deadline) {
+        if (await check()) return;
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+      assert.fail(message);
+    };
+    const latencies = [];
+    const applied = async (label, since = Date.now()) => {
+      await tablet
+        .getByRole("button", { name: "Say " + label, exact: true })
+        .waitFor({ timeout: 20000 });
+      assert.ok(
+        hasLabel(await persisted(), label),
+        "Rendered publication must already be saved durably",
+      );
+      await waitUntil(async () => {
+        const row = (await profile()).devices.find(
+          (value) => value.name === "Demo tablet",
+        );
+        return (
+          row?.appliedVersion === expectedVersion &&
+          row.appliedAt > 0 &&
+          row.lastSeenAt > 0
+        );
+      }, "Teacher must receive the version that the device actually saved");
+      latencies.push(Date.now() - since);
+    };
+    const publishLabel = async (label, edit = () => {}) => {
+      let current = await profile();
+      const next = structuredClone(current.board);
+      const tile = next.tiles.find((value) => value?.kind === "word");
+      tile.label = label;
+      tile.phrase = label;
+      edit(next);
+      const saved = await teacher.request.put(profilePath, {
+        headers,
+        data: { board: next, revision: current.revision },
+      });
+      assert.equal(saved.status(), 200);
+      current = await saved.json();
+      const response = await teacher.request.post(profilePath + "/publish", {
+        headers,
+        data: { revision: current.revision },
+      });
+      assert.equal(response.status(), 200);
+      expectedVersion = (await response.json()).publishedVersion;
+      return Date.now();
+    };
+    const stays = async (label) => {
+      // More than two real foreground poll periods, with no production clocks mocked.
+      await new Promise((resolve) => setTimeout(resolve, 6500));
+      assert.ok(
+        hasLabel(await persisted(), label),
+        "Active communication or a caregiver draft must retain its current board",
+      );
+      const row = (await profile()).devices.find(
+        (value) => value.name === "Demo tablet",
+      );
+      assert.notEqual(
+        row.appliedVersion,
+        expectedVersion,
+        "A waiting update must not be reported as applied",
+      );
+    };
+
+    await applied("Published one");
     await tablet.reload();
     await tablet
       .getByRole("button", { name: "Say Published one", exact: true })
       .waitFor();
-    const denied = await device.request.get(origin + "/api/classrooms");
-    assert.equal(denied.status(), 401);
-    // Keep the learner panel open with version 1 while the teacher publishes.
-    // Loading must fetch the latest board, without a separate connection check.
-    await editDevice();
-    await tablet
-      .getByRole("button", { name: "Check classroom connection", exact: true })
-      .click();
-    await tablet
-      .getByText("Linked to Demo learner. Published version 1 is available.", {
-        exact: true,
-      })
-      .waitFor();
-    const beforeUpdate = await tablet.evaluate(() =>
-      localStorage.getItem("sayboard-v2"),
+    assert.equal(
+      (await device.request.get(origin + "/api/classrooms")).status(),
+      401,
     );
+
+    // This is the classroom acceptance test. Only the teacher acts after pairing.
+    // There are no learner clicks, reloads, or explicit API calls to make it sync.
     await changeDraft("Published one", "Published two");
+    const untouchedAt = Date.now();
     await publish();
+    expectedVersion = 2;
     await page
       .getByRole("heading", { name: "Version 2", exact: true })
       .waitFor();
-    assert.equal(
-      await tablet.evaluate(() => localStorage.getItem("sayboard-v2")),
-      beforeUpdate,
-      "Publishing must not replace the working board or caregiver draft",
-    );
-    await tablet
-      .getByRole("button", { name: "Edit Published one", exact: true })
-      .waitFor();
-    await tablet
-      .getByRole("button", { name: "Load published board", exact: true })
-      .click();
-    await tablet
-      .getByText(
-        "Load version 2 into this caregiver draft? This replaces this draft. Save board applies it on this device.",
-        { exact: true },
-      )
-      .waitFor();
-    await confirm(tablet);
-    await tablet
-      .getByRole("button", { name: "Save board", exact: true })
-      .click();
+    await applied("Published two", untouchedAt);
+    await page
+      .locator(".teacher-device-row")
+      .filter({ hasText: "Demo tablet" })
+      .getByText("Version 2 saved · Up to date", { exact: true })
+      .waitFor({ timeout: 15000 });
+    if (artifactDirectory) {
+      await page.screenshot({
+        path: artifactDirectory + `/teacher-automatic-${engine}.png`,
+        fullPage: true,
+      });
+    }
+    await tablet.reload();
     await tablet
       .getByRole("button", { name: "Say Published two", exact: true })
       .waitFor();
+
     await page
       .getByRole("button", { name: "Restore version 1 to draft", exact: true })
       .click();
     await confirm(page);
-    await page
-      .getByText(
-        "Version 1 restored into the draft. Preview it before publishing.",
-        { exact: true },
-      )
-      .waitFor();
-    await tablet
-      .getByRole("button", { name: "Say Published two", exact: true })
-      .waitFor();
-    await publish();
-    await page
-      .getByRole("heading", { name: "Version 3", exact: true })
-      .waitFor();
-    await applyPublication(true);
-    await tablet
-      .getByRole("button", { name: "Say Published one", exact: true })
-      .waitFor();
-    await editDevice();
-    await tablet
-      .getByRole("button", { name: "Check classroom connection", exact: true })
-      .click();
-    await tablet
-      .getByText("Linked to Demo learner. Published version 3 is available.", {
-        exact: true,
-      })
-      .waitFor();
-    const beforeInterruptedLoad = await tablet.evaluate(() =>
-      localStorage.getItem("sayboard-v2"),
+    assert.ok(
+      hasLabel(await persisted(), "Published two"),
+      "Restoring a draft must not publish it",
     );
+    await publish();
+    expectedVersion = 3;
+    await applied("Published one");
+
+    // Slow network response A must not strand the learner on A when B is newer.
+    let downloadReady = false;
+    const releaseDownload = Promise.withResolvers();
+    let held = false;
+    await device.route("**/api/device/board", async (route) => {
+      if (held) return route.continue();
+      held = true;
+      const response = await route.fetch();
+      downloadReady = true;
+      await releaseDownload.promise;
+      await route.fulfill({ response });
+    });
+    let newestAt;
+    try {
+      await publishLabel("Superseded slow version");
+      await waitUntil(
+        () => downloadReady,
+        "A new publication must trigger a board download without a learner action",
+      );
+      newestAt = await publishLabel("Newest version wins");
+    } finally {
+      releaseDownload.resolve();
+    }
+    await applied("Newest version wins", newestAt);
+    await device.unroute("**/api/device/board");
+
     await device.setOffline(true);
-    await tablet
-      .getByRole("button", { name: "Load published board", exact: true })
-      .click();
-    await tablet
-      .getByText(
-        "The classroom service could not be reached. Your device board is unchanged. Try again when connected.",
-        { exact: true },
-      )
-      .waitFor();
-    assert.equal(
-      await tablet.evaluate(() => localStorage.getItem("sayboard-v2")),
-      beforeInterruptedLoad,
+    const offlineBoard = await persisted();
+    await publishLabel("Published while offline");
+    await new Promise((resolve) => setTimeout(resolve, 6500));
+    assert.deepEqual(
+      await persisted(),
+      offlineBoard,
+      "Network loss must preserve the last saved communication board",
     );
     await device.setOffline(false);
+    await applied("Published while offline");
+
+    // Simulate a browser quota failure at the real localStorage boundary. The
+    // network and publication are real, and the last working board must win.
+    await tablet.evaluate(() => {
+      const original = Storage.prototype.setItem;
+      window.__denyClassroomSave = true;
+      Storage.prototype.setItem = function (key, value) {
+        if (
+          this === localStorage &&
+          key === "sayboard-v2" &&
+          window.__denyClassroomSave
+        )
+          throw new DOMException(
+            "Synthetic quota failure",
+            "QuotaExceededError",
+          );
+        return original.call(this, key, value);
+      };
+    });
+    await publishLabel("Saved after storage recovers");
+    await stays("Published while offline");
     await tablet
-      .getByRole("button", { name: "Load published board", exact: true })
-      .click();
+      .getByRole("button", { name: "Say Published while offline", exact: true })
+      .waitFor();
+    await tablet.evaluate(() => {
+      window.__denyClassroomSave = false;
+    });
+    await applied("Saved after storage recovers");
+
     await tablet
-      .getByText(
-        "Load version 3 into this caregiver draft? This replaces this draft. Save board applies it on this device.",
-        { exact: true },
-      )
-      .waitFor();
-    // A publication arriving during the confirmation must not load silently.
-    await changeDraft("Published one", "Published three");
-    await publish();
-    await page
-      .getByRole("heading", { name: "Version 4", exact: true })
-      .waitFor();
-    await confirm(tablet);
-    await tablet
-      .getByText(
-        "The published version changed while you were confirming. Your draft is unchanged. Choose Load published board again to review the latest version.",
-        { exact: true },
-      )
-      .waitFor();
+      .getByLabel("Type something to say", { exact: true })
+      .fill("Please keep my message");
+    await publishLabel("After typed message");
+    await stays("Saved after storage recovers");
     assert.equal(
-      await tablet.evaluate(() => localStorage.getItem("sayboard-v2")),
-      beforeInterruptedLoad,
+      await tablet
+        .getByLabel("Type something to say", { exact: true })
+        .inputValue(),
+      "Please keep my message",
     );
+    await tablet.getByLabel("Type something to say", { exact: true }).fill("");
+    await tablet.getByLabel("Type something to say", { exact: true }).blur();
+    await applied("After typed message");
+
+    await tablet.evaluate(() => {
+      window.__holdClassroomSpeech = true;
+    });
     await tablet
-      .getByRole("button", { name: "Load published board", exact: true })
+      .getByRole("button", { name: "Say After typed message", exact: true })
       .click();
-    await tablet
-      .getByText(
-        "Load version 4 into this caregiver draft? This replaces this draft. Save board applies it on this device.",
-        { exact: true },
-      )
-      .waitFor();
-    await confirm(tablet);
-    await tablet
-      .getByRole("button", { name: "Save board", exact: true })
-      .click();
+    await waitUntil(
+      () => tablet.evaluate(() => Boolean(window.__classroomUtterance)),
+      "Synthetic local speech must have started",
+    );
+    await publishLabel("After speech finishes");
+    await stays("After typed message");
+    await tablet.evaluate(() => {
+      window.__holdClassroomSpeech = false;
+      window.__classroomUtterance.onend?.();
+      window.__classroomUtterance = null;
+    });
+    await applied("After speech finishes");
+
     await editDevice();
     await tablet
-      .getByRole("button", { name: "Check classroom connection", exact: true })
+      .getByRole("button", { name: "Edit After speech finishes", exact: true })
       .click();
     await tablet
-      .getByText("Linked to Demo learner. Published version 4 is available.", {
+      .getByLabel("Text on the tile", { exact: true })
+      .fill("Caregiver unsaved words");
+    await tablet
+      .getByRole("button", { name: "Apply changes", exact: true })
+      .click();
+    await publishLabel("After caregiver draft");
+    await stays("After speech finishes");
+    await tablet
+      .getByRole("button", {
+        name: "Edit Caregiver unsaved words",
         exact: true,
       })
-      .waitFor();
-    await page
-      .getByRole("button", { name: "Refresh saved draft", exact: true })
-      .click();
-    await page
-      .getByRole("button", { name: "Revoke Demo tablet", exact: true })
-      .click();
-    await confirm(page);
-    await page.getByText("Device access revoked.", { exact: true }).waitFor();
-    await tablet
-      .getByRole("button", { name: "Load published board", exact: true })
-      .click();
-    await tablet
-      .getByText(
-        "Sign in again, or link this device with a new code. Your device board is unchanged.",
-        { exact: true },
-      )
       .waitFor();
     await tablet
       .getByRole("button", { name: "Back to board", exact: true })
       .click();
+    await confirm(tablet);
+    await applied("After caregiver draft");
+
     await tablet
-      .getByRole("button", { name: "Say Published three", exact: true })
-      .waitFor();
+      .getByRole("button", { name: "Open Drink category", exact: true })
+      .click();
+    await publishLabel("Home version while category open", (next) => {
+      const drink = next.tiles.find(
+        (tile) => tile?.kind === "category" && tile.label === "Drink",
+      );
+      const water = next.subBoards
+        .find((board) => board.id === drink.subBoardId)
+        .tiles.find((tile) => tile?.kind === "word");
+      water.label = "Water automatically updated";
+      water.phrase = "Water automatically updated";
+    });
+    await applied("Water automatically updated");
+    await tablet.getByRole("heading", { name: "Drink", exact: true }).waitFor();
+    // Removing the active category must also finish without a learner action.
+    await publishLabel("After category removed", (next) => {
+      const drink = next.tiles.find(
+        (tile) => tile?.kind === "category" && tile.label === "Drink",
+      );
+      next.tiles = next.tiles.map((tile) =>
+        tile?.id === drink.id ? null : tile,
+      );
+      next.subBoards = next.subBoards.filter(
+        (board) => board.id !== drink.subBoardId,
+      );
+    });
+    await applied("After category removed");
+    await tablet.getByRole("heading", { name: "Home", exact: true }).waitFor();
+
+    if (artifactDirectory) {
+      await tablet.screenshot({
+        path: artifactDirectory + `/device-automatic-${engine}.png`,
+        fullPage: true,
+      });
+    }
+    const appliedBoard = await persisted();
+    const current = await profile();
+    const linked = current.devices.find(
+      (value) => value.name === "Demo tablet",
+    );
+    const revoked = await teacher.request.delete(
+      profilePath + "/devices/" + linked.id,
+      { headers },
+    );
+    assert.equal(revoked.status(), 200);
+    await publishLabel("Must not reach revoked device");
+    await new Promise((resolve) => setTimeout(resolve, 6500));
+    assert.deepEqual(
+      await persisted(),
+      appliedBoard,
+      "Revocation must stop new versions without deleting the working board",
+    );
     await tablet.reload();
     await tablet
-      .getByRole("button", { name: "Say Published three", exact: true })
+      .getByRole("button", { name: "Say After category removed", exact: true })
       .waitFor();
     await device.setOffline(true);
     assert.ok(
       await tablet
-        .getByRole("button", { name: "Say Published three", exact: true })
+        .getByRole("button", {
+          name: "Say After category removed",
+          exact: true,
+        })
         .isVisible(),
     );
-    await page
-      .getByRole("button", { name: "Back to " + classroomName, exact: true })
-      .click();
-    await page
-      .getByRole("button", { name: "Delete classroom", exact: true })
-      .click();
-    await confirm(page);
+    assert.equal(
+      (
+        await teacher.request.delete(origin + "/api/classrooms/" + ids[0], {
+          headers,
+        })
+      ).status(),
+      200,
+    );
+    await page.goto(origin + "/teacher.html");
     await page
       .getByRole("heading", { name: "Your classrooms", exact: true })
       .waitFor();
@@ -445,18 +578,26 @@ export async function checkClassroomFlow({
       existingEditorSavesServerDraft: true,
       teacherLocalBoardUnchanged: true,
       actualBoardPreview: true,
-      explicitPublicationAndDeviceApply: true,
+      unlinkedFreeBoardDoesNotPollClassroom: true,
+      pairOnceThenUntouchedDeviceUpdates: true,
       publishedBoardSurvivesReload: true,
-      latestPublicationWithoutManualRefresh: true,
-      saveWaitsForPublicationDownload: true,
-      publicationChangedDuringConfirmationRejected: true,
-      offlineLoadPreservesWorkingBoard: true,
-      revokedDeviceCannotLoadCachedPublication: true,
-      rollback: true,
+      teacherReceivesDurablyAppliedVersion: true,
+      dashboardReceiptUpdatesWithoutRefresh: true,
+      slowOlderDownloadCatchesLatestPublication: true,
+      offlineCatchupPreservesWorkingBoard: true,
+      storageFailureDoesNotApplyOrAcknowledge: true,
+      temporaryStorageFailureRetriesAutomatically: true,
+      typedMessageDelaysUpdate: true,
+      speechFinishesBeforeUpdate: true,
+      caregiverDraftSurvivesPublication: true,
+      idleCategoryUpdatesWithoutLearnerNavigation: true,
+      removedCategoryReturnsHomeAutomatically: true,
+      rollbackPublishesAutomatically: true,
       deviceCannotAccessTeacherData: true,
       revocationKeepsLocalBoard: true,
       classroomDeleted: true,
       logout: true,
+      automaticUpdateLatencyMs: latencies,
       errors,
     };
   } catch (error) {

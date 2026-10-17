@@ -20,16 +20,16 @@ Public source code does not make customer data public. Production records, crede
 
 ## Current implementation
 
-| Capability | Status |
-| --- | --- |
-| Local boards, editing, speech, import and export | Implemented; see [device and offline limits](SELF-HOSTING.md#serve-only-the-static-app) |
-| Standalone account backup | Implemented with SQLite, operator-created accounts, explicit save/load and revision checks |
-| Optional PostgreSQL adapter | Implemented against the same account storage contract |
-| Classroom dashboard and ownership | Implemented for one adult owner per classroom, with learner aliases and SQLite storage |
-| Device pairing and published board updates | Implemented with single-use codes, scoped device credentials, manual apply and version restore |
-| Invite-only teacher onboarding | Implemented with organiser permissions, single-use password setup and optional SMTP delivery |
-| Shared school organisations and delegated roles | Planned |
-| Subscriptions and billing | Planned; prices undecided |
+| Capability                                       | Status                                                                                                   |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| Local boards, editing, speech, import and export | Implemented; see [device and offline limits](SELF-HOSTING.md#serve-only-the-static-app)                  |
+| Standalone account backup                        | Implemented with SQLite, operator-created accounts, explicit save/load and revision checks               |
+| Optional PostgreSQL adapter                      | Implemented against the same account storage contract                                                    |
+| Classroom dashboard and ownership                | Implemented for one adult owner per classroom, with learner aliases and SQLite storage                   |
+| Device pairing and published board updates       | Implemented with single-use codes, automatic updates at safe points, device receipts and version restore |
+| Invite-only teacher onboarding                   | Implemented with organiser permissions, single-use password setup and optional SMTP delivery             |
+| Shared school organisations and delegated roles  | Planned                                                                                                  |
+| Subscriptions and billing                        | Planned; prices undecided                                                                                |
 
 Personal backups store one board copy per adult account. Classroom profiles, drafts, versions and device links are separate records. Each classroom belongs to one adult account; it cannot access another adult's personal backup or classrooms. See [the implemented boundaries](ARCHITECTURE.md#classroom-boundary).
 
@@ -39,8 +39,8 @@ Prove this workflow before adding billing:
 
 1. A teacher creates a classroom and a demonstration student profile without requiring a student email address.
 2. The teacher creates or imports a board and previews it.
-3. A caregiver deliberately links a device to that profile with an expiring, single-use pairing code.
-4. The teacher publishes an immutable board version. The linked device receives it at a safe point and keeps its last working local version if a transfer fails.
+3. A caregiver deliberately links a device to that profile with an expiring, single-use pairing code and confirms automatic updates once.
+4. The teacher publishes an immutable board version without touching the learner's device. The linked device receives it at a safe point, saves it locally and reports receipt. It keeps its last working version if a transfer fails.
 5. The teacher restores a previous version. Removing device access stops future cloud transfers without deleting its working local board.
 
 Keep drafts separate from published versions. An edit on the teacher dashboard must not rearrange tiles while the person is communicating. Store no history of what the student says. Record publication and permission changes without copying vocabulary into logs.
@@ -49,15 +49,15 @@ Keep drafts separate from published versions. An edit on the teacher dashboard m
 
 The pilot implements adult-owned classrooms, learner profiles, drafts, versions and device links. The following organisation and membership model is a future extension, not an applied schema. Add it when the pilot demonstrates a need for teachers to collaborate.
 
-| Record | Owns |
-| --- | --- |
-| Organisation | A school or classroom workspace |
-| Membership | An adult account's role in one organisation |
-| Student profile | A workspace-specific label and board assignment, with no student login required for the pilot |
-| Board | A teacher-editable draft and a pointer to its published version |
-| Board version | An immutable, validated board snapshot with a revision and author |
-| Device link | Scoped read access to one assigned profile, with revocation and expiring pairing credentials |
-| Subscription | Official hosted-service entitlement for the organisation, separate from board ownership and membership |
+| Record          | Owns                                                                                                   |
+| --------------- | ------------------------------------------------------------------------------------------------------ |
+| Organisation    | A school or classroom workspace                                                                        |
+| Membership      | An adult account's role in one organisation                                                            |
+| Student profile | A workspace-specific label and board assignment, with no student login required for the pilot          |
+| Board           | A teacher-editable draft and a pointer to its published version                                        |
+| Board version   | An immutable, validated board snapshot with a revision and author                                      |
+| Device link     | Scoped read access to one assigned profile, with revocation and expiring pairing credentials           |
+| Subscription    | Official hosted-service entitlement for the organisation, separate from board ownership and membership |
 
 An organisation extension must enforce membership on every read and write. The pilot already enforces classroom ownership on every operation. Device credentials only read assigned published versions. They cannot list students, edit boards or manage billing.
 

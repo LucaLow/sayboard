@@ -167,11 +167,25 @@ export async function deviceApi(
       { "Set-Cookie": cookie(token, DEVICE_MS / 1000) },
     );
   }
-  if (!["/api/device/board", "/api/device/unlink"].includes(path))
+  if (
+    ![
+      "/api/device/board",
+      "/api/device/sync",
+      "/api/device/applied",
+      "/api/device/unlink",
+    ].includes(path)
+  )
     throw new HttpError(404, "not_found");
-  method(request, path.endsWith("board") ? ["GET"] : ["POST"]);
+  method(
+    request,
+    path.endsWith("board") || path.endsWith("sync") ? ["GET"] : ["POST"],
+  );
   const token = sessionToken(request, name);
-  const current = token ? classrooms.device(tokenHash(token), now) : null;
+  const current = token
+    ? path.endsWith("board")
+      ? classrooms.device(tokenHash(token), now)
+      : classrooms.deviceSync(tokenHash(token), now)
+    : null;
   if (!token || !current)
     return json(
       401,
@@ -182,6 +196,12 @@ export async function deviceApi(
     return json(200, { ...current, csrfToken: csrfToken(token) });
   if (!matchesToken(request.headers.get("x-csrf-token"), csrfToken(token)))
     throw new HttpError(403, "csrf_rejected");
+  if (path.endsWith("applied")) {
+    const input = await body(request);
+    const version = validated(() => integer(record(input).version));
+    classrooms.applied(tokenHash(token), version, now);
+    return json(200, { ok: true });
+  }
   classrooms.unlink(tokenHash(token));
   return json(200, { ok: true }, { "Set-Cookie": cookie("", 0) });
 }
