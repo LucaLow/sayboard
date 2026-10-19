@@ -44,7 +44,8 @@ async function request(
 }
 // Browsers compile pattern attributes with the v flag, which rejects an
 // unescaped "-" in a character class and then skips the check entirely.
-export const usernamePattern = "[a-zA-Z0-9_\\-]+";
+// Surrounding spaces, as in a pasted name, are trimmed before sending.
+export const usernamePattern = "\\s*[a-zA-Z0-9_\\-]+\\s*";
 export async function canInvite(): Promise<boolean> {
   return record(await request("/api/invitations")).operator === true;
 }
