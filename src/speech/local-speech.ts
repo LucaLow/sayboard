@@ -102,7 +102,7 @@ export function createLocalSpeech() {
         ? `Preparation stopped. ${result.prepared} phrases prepared.`
         : defaults
           ? "Five common phrases are ready for quick taps at the selected speed. Changing speed may require new preparation."
-          : `${result.prepared} board phrases prepared at the selected speed. Up to 32 phrases share a 4 MB memory cache; larger boards may need fresh generation.`;
+          : `${result.prepared} board phrases prepared at the selected speed. Up to 32 phrases share a 12 MB memory cache, about two minutes of speech; larger boards or long phrases may need fresh generation.`;
     }
     prepare.onclick = () => {
       void preparePhrases([...DEFAULT_PHRASES], true);

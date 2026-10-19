@@ -192,6 +192,15 @@ it('prepares custom phrases silently with deduplication and a 32-entry cap', asy
   engine.speak('Custom'); await flush(); expect(model.generate).toHaveBeenCalledTimes(32); expect(output.play).toHaveBeenCalledOnce();
 });
 
+it('keeps all 32 prepared phrases of a few seconds each in memory', async () => {
+  const { engine, output, model } = fixture(async () => ({ samples: new Float32Array(24000 * 3).fill(0.01), sampleRate: 24000 }));
+  await engine.loadModel();
+  const phrases = Array.from({ length: 32 }, (_, i) => `Board phrase ${i}`);
+  expect(await engine.preparePhrases(phrases)).toEqual({ prepared: 32, cancelled: false });
+  engine.speak('Board phrase 0'); await flush();
+  expect(model.generate).toHaveBeenCalledTimes(32); expect(output.system).not.toHaveBeenCalled(); expect(output.play).toHaveBeenCalledOnce();
+});
+
 it('stops admitting preparation work after its 60-second budget', async () => {
   const time = vi.spyOn(performance, 'now');
   time.mockReturnValue(0);
