@@ -10,6 +10,7 @@ import { SqliteStore } from "./store.js";
 import { productionStoreFactory } from "./postgres-runtime.js";
 import { retainSources } from "./source-retention.js";
 import { sessionToken } from "./api-http.js";
+import { smtpMailer } from "./mail.js";
 
 const json = (status: number, error: string) =>
   new Response(JSON.stringify({ error }), {
@@ -58,7 +59,11 @@ export async function startServer(env: NodeJS.ProcessEnv) {
       "Use an exact HTTPS origin, or HTTP loopback for local verification",
     );
   const origin = publicURL.origin;
-  if (enabled) hostedConfig(env);
+  if (enabled) {
+    hostedConfig(env);
+    // Invalid optional email settings must stop startup, not turn every account request into a 503.
+    smtpMailer(env);
+  }
   const directory = await realpath(resolve(env.SAYBOARD_STATIC_DIR ?? "dist"));
   await readFile(resolve(directory, "index.html"));
   process.umask(0o077);
@@ -209,7 +214,7 @@ if (process.env.SAYBOARD_SERVER_ENTRY === "1") {
     .then(() => console.log("Sayboard server started on loopback."))
     .catch(() => {
       console.error(
-        "Sayboard could not start. Check its origin, storage configuration and built static files.",
+        "Sayboard could not start. Check its origin, storage and email configuration and built static files.",
       );
       process.exitCode = 1;
     });
