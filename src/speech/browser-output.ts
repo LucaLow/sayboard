@@ -8,6 +8,8 @@ export class BrowserSpeechOutput implements SpeechOutput {
   private generation = 0;
   private source: AudioBufferSourceNode | null = null;
   private finish: (() => void) | null = null;
+  // Chrome can collect an unreferenced utterance mid-speech and never fire onend.
+  private utterance: SpeechSynthesisUtterance | null = null;
   unlock(): boolean {
     this.context ??= new AudioContext();
     this.resume = this.context.resume();
@@ -24,12 +26,13 @@ export class BrowserSpeechOutput implements SpeechOutput {
     if (!voice) {
       options.onError?.('No on-device voice is ready. The selected words can still be shown.'); return;
     }
-    const utterance = new SpeechSynthesisUtterance(text);
+    const utterance = new SpeechSynthesisUtterance(text); this.utterance = utterance;
+    const release = () => { if (this.utterance === utterance) this.utterance = null; };
     utterance.voice = voice; utterance.rate = options.rate ?? 1;
     utterance.onstart = () => options.onStart?.();
-    utterance.onend = () => options.onEnd?.();
-    utterance.onerror = () => options.onError?.('Speech could not play. Check device volume or try another on-device voice.');
-    try { window.speechSynthesis.speak(utterance); } catch { options.onError?.('Speech could not start.'); }
+    utterance.onend = () => { release(); options.onEnd?.(); };
+    utterance.onerror = () => { release(); options.onError?.('Speech could not play. Check device volume or try another on-device voice.'); };
+    try { window.speechSynthesis.speak(utterance); } catch { release(); options.onError?.('Speech could not start.'); }
   }
   async play(audio: PhraseAudio, options: SpeakOptions): Promise<void> {
     const token = this.generation;
@@ -53,6 +56,7 @@ export class BrowserSpeechOutput implements SpeechOutput {
   cancel(): void {
     this.generation++;
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    this.utterance = null;
     const source = this.source; this.source = null;
     if (source) { source.onended = null; source.stop(); source.disconnect(); }
     this.finish?.(); this.finish = null;
