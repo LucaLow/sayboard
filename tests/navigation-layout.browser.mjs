@@ -236,6 +236,99 @@ try {
   await tap();
   assert.deepEqual(await page.evaluate(() => window.__spoken), ["Water"]);
   await page.close();
+  // Below a short category, Type and Speak can move under the finger instead.
+  const typed = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+  });
+  await typed.addInitScript(() => {
+    const word = (id, label) => ({
+      kind: "word",
+      id,
+      label,
+      phrase: label,
+      icon: "emoji:1f4a7",
+      tone: "blue",
+    });
+    localStorage.setItem(
+      "sayboard-v2",
+      JSON.stringify({
+        version: 2,
+        tiles: [
+          word("yes", "Yes"),
+          word("no", "No"),
+          word("more", "More"),
+          { ...word("drink", "Drink"), kind: "category", subBoardId: "drinks" },
+        ],
+        voice: "",
+        rate: 1,
+        size: "small",
+        subBoards: [
+          { id: "drinks", size: "small", tiles: [word("water", "Water")] },
+        ],
+      }),
+    );
+    window.__spoken = [];
+    window.SpeechSynthesisUtterance = class {
+      constructor(text) {
+        this.text = text;
+      }
+    };
+    speechSynthesis.getVoices = () => [
+      {
+        name: "Synthetic local voice",
+        voiceURI: "synthetic-local",
+        localService: true,
+        lang: "en-AU",
+      },
+    ];
+    speechSynthesis.speak = (utterance) => {
+      window.__spoken.push(utterance.text);
+      utterance.onstart?.();
+      utterance.onend?.();
+    };
+    speechSynthesis.cancel = () => {};
+  });
+  await typed.goto(origin);
+  await typed.locator(".type-and-speak input").fill("Hello there");
+  const drink = typed.getByRole("button", {
+    name: "Open Drink category",
+    exact: true,
+  });
+  const tile = await drink.boundingBox();
+  await drink.click();
+  const speakButton = typed.locator(".type-and-speak button.primary");
+  const speakBox = await speakButton.boundingBox();
+  const overlap = {
+    left: Math.max(tile.x, speakBox.x),
+    right: Math.min(tile.x + tile.width, speakBox.x + speakBox.width),
+    top: Math.max(tile.y, speakBox.y),
+    bottom: Math.min(tile.y + tile.height, speakBox.y + speakBox.height),
+  };
+  assert.ok(
+    overlap.left < overlap.right && overlap.top < overlap.bottom,
+    "Speak occupies part of the category tile's place",
+  );
+  const point = {
+    x: (overlap.left + overlap.right) / 2,
+    y: (overlap.top + overlap.bottom) / 2,
+  };
+  await typed.getByRole("button", { name: "Back / Home", exact: true }).click();
+  await typed.waitForTimeout(500);
+  await typed.mouse.click(point.x, point.y);
+  await typed.waitForTimeout(120);
+  await typed.mouse.click(point.x, point.y);
+  await typed.waitForTimeout(100);
+  assert.deepEqual(
+    await typed.evaluate(() => window.__spoken),
+    [],
+    "Double tap on a category does not speak typed text",
+  );
+  await typed.waitForTimeout(500);
+  await speakButton.click();
+  assert.deepEqual(await typed.evaluate(() => window.__spoken), [
+    "Hello there",
+  ]);
+  await typed.close();
   console.log(JSON.stringify({ scenarios: results.length, results }, null, 2));
 } finally {
   await browser.close();

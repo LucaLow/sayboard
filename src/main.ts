@@ -119,6 +119,28 @@ let typedText = "";
 let typedMessagePending = false;
 let lastInteraction = 0;
 let categoryTap = { boardId: "", time: -Infinity, area: new DOMRect() };
+// The second tap of a double tap on a category would otherwise land on
+// whatever replaced it: a word, or Type and Speak below a short category.
+// Keyboard and switch clicks have no detail.
+document.addEventListener(
+  "click",
+  (event) => {
+    const { boardId, time, area } = categoryTap;
+    if (
+      event.detail > 0 &&
+      activeBoardId === boardId &&
+      event.timeStamp - time < 400 &&
+      event.clientX >= area.left &&
+      event.clientX <= area.right &&
+      event.clientY >= area.top &&
+      event.clientY <= area.bottom
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  },
+  true,
+);
 const heldPointers = new Set<number>();
 let classroomPanelCleanup: (() => void) | undefined;
 let classroomSync: ReturnType<typeof createClassroomSync> | null = null;
@@ -693,19 +715,6 @@ function render() {
       const b = button(
         "",
         (event) => {
-          // The second tap of a double tap on a category would otherwise land
-          // on the word that replaced it. Keyboard and switch clicks have no detail.
-          const { boardId, time, area } = categoryTap;
-          if (
-            event.detail > 0 &&
-            activeBoardId === boardId &&
-            event.timeStamp - time < 400 &&
-            event.clientX >= area.left &&
-            event.clientX <= area.right &&
-            event.clientY >= area.top &&
-            event.clientY <= area.bottom
-          )
-            return;
           if (tile.kind === "category") {
             categoryTap = {
               boardId: tile.subBoardId,
