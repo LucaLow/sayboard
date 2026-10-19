@@ -33,7 +33,9 @@ async function request(
       response.status === 410
         ? "This link has expired or has already been used. Ask your pilot organiser for a new one."
         : response.status === 409
-          ? "That username already exists, or cannot be reset. Check it and try again."
+          ? path === "/api/auth/activation"
+            ? "An account with this username already exists. Ask your pilot organiser for a password reset link."
+            : "That username already exists, or cannot be reset. Check it and try again."
           : response.status === 429
             ? "Too many attempts. Wait five minutes before trying again."
             : response.status === 403

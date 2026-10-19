@@ -162,6 +162,17 @@ it("handles concurrent acceptance atomically", async () => {
   ]);
   expect(results.map((r) => r.status).sort()).toEqual([200, 410]);
 });
+it("reports a username taken by an operator-created account after the invitation", async () => {
+  const token = await issue();
+  await store.addAccount("new_teacher", password, false);
+  const response = await request("/api/auth/activation", "POST", {
+    token,
+    password: replacement,
+  });
+  expect(response.status).toBe(409);
+  expect(await response.json()).toEqual({ error: "username_taken" });
+  await login("new_teacher");
+});
 it("lets only the issuing organiser cancel a pending link", async () => {
   const token = await issue();
   expect(
