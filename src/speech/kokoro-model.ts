@@ -2,6 +2,10 @@ import type { PhraseAudio } from './audio-cache';
 import type { LocalModel } from './engine';
 import { MODEL_IDENTITY } from './kokoro-assets';
 
+// A load fails after this long without progress, so slow but steady downloads can finish.
+// It also covers the ~22 MB runtime download and model start, which report no progress.
+const LOAD_IDLE_MS = 120000;
+
 // Terminating the worker cancels both download fetches and stalled WASM inference.
 export class KokoroModel implements LocalModel {
   readonly identity = MODEL_IDENTITY;
@@ -28,15 +32,17 @@ export class KokoroModel implements LocalModel {
         this.worker = new Worker(new URL('./kokoro.worker.ts', import.meta.url), { type: 'module' });
         this.worker.onmessage = event => this.receive(event.data);
         this.worker.onerror = () => this.dispose();
-        this.timer = setTimeout(() => this.dispose(), 180000);
+        this.restartLoadTimer();
         this.worker.postMessage({ kind: 'load' });
       } catch { this.dispose(); }
     });
   }
   private clearTimer(): void { if (this.timer) clearTimeout(this.timer); this.timer = null; }
+  private restartLoadTimer(): void { this.clearTimer(); this.timer = setTimeout(() => this.dispose(), LOAD_IDLE_MS); }
   private receive(data: unknown): void {
     if (!data || typeof data !== 'object' || !('kind' in data)) return;
     if (data.kind === 'progress' && 'fraction' in data && typeof data.fraction === 'number' && Number.isFinite(data.fraction)) {
+      if (this.finishLoad) this.restartLoadTimer();
       this.progress?.(Math.max(0, Math.min(1, data.fraction))); return;
     }
     if (data.kind === 'ready') {
