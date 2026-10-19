@@ -117,7 +117,7 @@ Create the destination backup directory on the host first and restrict access to
 
 Also back up `/data/source` and Caddy's certificate volume. Source archives are public software, but their immutable URLs must remain available across upgrades.
 
-To restore a database, stop both services and write a verified snapshot over the SQLite file from a one-off app container. It runs as the server's unprivileged user; `docker compose cp` would create a root-owned file that the server cannot open. The same command removes obsolete WAL and SHM companions, which is safe only while the server is stopped. Then start the app before the proxy:
+To restore a database, stop both services and write a verified snapshot over the SQLite file from a one-off app container. It runs as the server's unprivileged user; `docker compose cp` would create a root-owned file that the server cannot open. The same command removes obsolete WAL and SHM companions, which is safe only while the server is stopped. Then start the app before the proxy. On the 512 MB VPS, add `-p sayboard -f compose.yaml -f deploy/compose.small.yaml` after `docker compose` in all four commands. Without the overlay, `run` tries to build the app image instead of using `SAYBOARD_IMAGE`:
 
 ```sh
 docker compose stop
