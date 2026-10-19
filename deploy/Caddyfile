@@ -1,4 +1,9 @@
 {$SAYBOARD_DOMAIN} {
+    # Compress the app and its assets. API responses carry session-bound
+    # tokens beside user content, so they stay uncompressed (BREACH). gzip
+    # needs less memory per response than zstd for similar savings here.
+    @not-api not path /api/*
+    encode @not-api gzip
     reverse_proxy 127.0.0.1:8080 {
         header_up Host {http.request.hostport}
         header_up X-Forwarded-Host {http.request.hostport}
