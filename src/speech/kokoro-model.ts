@@ -53,13 +53,20 @@ export class KokoroModel implements LocalModel {
       this.clearTimer(); this.rejectJob = null;
       this.finishAudio?.({ samples: data.samples, sampleRate: data.sampleRate }); this.finishAudio = null; return;
     }
+    if ((data.kind === 'audio' || data.kind === 'error') && 'id' in data && data.id === this.activeId && this.finishAudio) {
+      // A failed or over-long phrase rejects only its job. The worker stays loaded for the next phrase.
+      this.clearTimer(); this.finishAudio = null;
+      this.rejectJob?.(new Error('Phrase generation failed')); this.rejectJob = null; return;
+    }
     this.dispose();
   }
+  get available(): boolean { return this.ready; }
   generate(text: string, rate: number): Promise<PhraseAudio> {
     if (!this.ready || !this.worker || this.rejectJob) return Promise.reject(new Error('Model unavailable'));
     return new Promise((resolve, reject) => {
       this.activeId = ++this.nextId;
       this.finishAudio = resolve; this.rejectJob = reject;
+      // Inference still running after 30 s holds the single-threaded worker, so stop it. The voice must then load again.
       this.timer = setTimeout(() => this.dispose(), 30000);
       this.worker?.postMessage({ kind: 'generate', id: this.activeId, text, rate });
     });
