@@ -563,6 +563,25 @@ export async function checkClassroomFlow({
     await applied("After speech finishes");
 
     await editDevice();
+    // A failed disconnect must be announced, not replaced by the sync status.
+    const classroomPanel = tablet.locator(".account-panel").filter({
+      has: tablet.getByRole("heading", {
+        name: "Classroom board",
+        exact: true,
+      }),
+    });
+    await device.route("**/api/device/unlink", (route) =>
+      route.fulfill({ status: 503, json: { error: "storage_unavailable" } }),
+    );
+    await classroomPanel
+      .getByRole("button", { name: "Disconnect classroom device", exact: true })
+      .click();
+    await confirm(tablet);
+    await classroomPanel
+      .getByRole("status")
+      .filter({ hasText: "Classroom hosting is unavailable on this server." })
+      .waitFor();
+    await device.unroute("**/api/device/unlink");
     await tablet
       .getByRole("button", { name: "Edit After speech finishes", exact: true })
       .click();
@@ -707,6 +726,7 @@ export async function checkClassroomFlow({
       clearingMessageUpdatesWithoutBlurring: true,
       emptyFocusedInputDoesNotBlockAutomaticUpdate: true,
       speechFinishesBeforeUpdate: true,
+      failedDisconnectIsAnnounced: true,
       caregiverDraftSurvivesPublication: true,
       idleCategoryUpdatesWithoutLearnerNavigation: true,
       removedCategoryReturnsHomeAutomatically: true,
