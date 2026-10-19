@@ -42,6 +42,9 @@ async function request(
     );
   return response.json();
 }
+// Browsers compile pattern attributes with the v flag, which rejects an
+// unescaped "-" in a character class and then skips the check entirely.
+export const usernamePattern = "[a-zA-Z0-9_\\-]+";
 export async function canInvite(): Promise<boolean> {
   return record(await request("/api/invitations")).operator === true;
 }
@@ -67,7 +70,7 @@ export function createInvitationsPanel() {
   const user = field("Teacher username");
   user.input.required = true;
   user.input.maxLength = 64;
-  user.input.pattern = "[a-zA-Z0-9_-]+";
+  user.input.pattern = usernamePattern;
   user.input.autocapitalize = "none";
   user.input.spellcheck = false;
   const kindLabel = el("label", "", "Link type");
