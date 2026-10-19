@@ -85,11 +85,12 @@ SAYBOARD_AUTH_ENABLED=1
 SAYBOARD_IMAGE=sayboard:RELEASE
 ```
 
-Use Docker Compose 2.24.4 or later for the overlay's `!reset` tag:
+Use Docker Compose 2.24.4 or later for the overlay's `!reset` tag. `up --pull never` does not fetch missing images, so pull the public Caddy proxy image first. Run the last two commands again to update Caddy:
 
 ```sh
 cd /srv/sayboard
 docker compose -p sayboard -f compose.yaml -f deploy/compose.small.yaml config --quiet
+docker compose -p sayboard -f compose.yaml -f deploy/compose.small.yaml pull proxy
 docker compose -p sayboard -f compose.yaml -f deploy/compose.small.yaml up -d --no-build --pull never --wait
 ```
 
