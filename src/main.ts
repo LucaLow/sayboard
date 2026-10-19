@@ -158,10 +158,11 @@ const supported =
   "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
 function hasUnsavedDraft(): boolean {
   return (
-    draft !== null &&
-    (hasBoardChanges(board, draft) ||
-      hasDeviceLayoutChanges(deviceLayout, draftDeviceLayout) ||
-      (storageBlocked && replacementAuthorizedDraft === draft))
+    (arrangement !== null && hasBoardChanges(board, arrangement.board)) ||
+    (draft !== null &&
+      (hasBoardChanges(board, draft) ||
+        hasDeviceLayoutChanges(deviceLayout, draftDeviceLayout) ||
+        (storageBlocked && replacementAuthorizedDraft === draft)))
   );
 }
 window.addEventListener("beforeunload", (event) => {
@@ -626,7 +627,12 @@ function render() {
           document.querySelector<HTMLButtonElement>(".tile")?.focus();
           return null;
         },
-        onCancel: () => {
+        onCancel: async () => {
+          if (
+            hasUnsavedDraft() &&
+            !(await confirmChange("Discard unsaved arrangement changes?"))
+          )
+            return;
           arrangement = null;
           render();
           document.querySelector<HTMLButtonElement>(".tile")?.focus();
