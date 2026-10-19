@@ -77,7 +77,15 @@ The packager defaults to `linux/amd64`. Set `SAYBOARD_VPS_PLATFORM=linux/arm64` 
 
 On a new dedicated Ubuntu 24.04 server, `deploy/bootstrap-small-vps.sh` configures Docker, firewall ports 22/80/443, automatic security updates and 1 GB of swap. Review it before running as root. Provision SSH keys first and verify a separate administrative login before disabling root access. Do not use this bootstrap on a shared server.
 
-Copy `compose.yaml`, `deploy/compose.small.yaml` and `deploy/Caddyfile` to `/srv/sayboard`. Set these values in `/srv/sayboard/.env`, readable only by the operator:
+Copy these repository files to the same paths under `/srv/sayboard`, keeping the `deploy/` directory:
+
+```text
+/srv/sayboard/compose.yaml
+/srv/sayboard/deploy/compose.small.yaml
+/srv/sayboard/deploy/Caddyfile
+```
+
+The commands below name `deploy/compose.small.yaml`, and `compose.yaml` mounts `./deploy/Caddyfile`. If that file is missing, Docker creates an empty directory in its place and the proxy cannot start. Set these values in `/srv/sayboard/.env`, readable only by the operator:
 
 ```text
 SAYBOARD_DOMAIN=boards.example.org
@@ -85,11 +93,12 @@ SAYBOARD_AUTH_ENABLED=1
 SAYBOARD_IMAGE=sayboard:RELEASE
 ```
 
-Use Docker Compose 2.24.4 or later for the overlay's `!reset` tag:
+Use Docker Compose 2.24.4 or later for the overlay's `!reset` tag. `up --pull never` does not fetch missing images, so pull the public Caddy proxy image first. Run the last two commands again to update Caddy:
 
 ```sh
 cd /srv/sayboard
 docker compose -p sayboard -f compose.yaml -f deploy/compose.small.yaml config --quiet
+docker compose -p sayboard -f compose.yaml -f deploy/compose.small.yaml pull proxy
 docker compose -p sayboard -f compose.yaml -f deploy/compose.small.yaml up -d --no-build --pull never --wait
 ```
 
@@ -107,7 +116,18 @@ docker compose cp app:/data/backups/sayboard-backup.sqlite /srv/backups/sayboard
 
 Create the destination backup directory on the host first and restrict access to it. The command refuses to overwrite an existing snapshot. Rotate names and store encrypted off-server copies. Database contents are not encrypted by the app.
 
-Also back up `/data/source` and Caddy's certificate volume. Source archives are public software, but their immutable URLs must remain available across upgrades. To restore a database, stop both services, replace the SQLite file from a verified snapshot, remove obsolete WAL and SHM companions only while the server is stopped, and start both services. Test restore with demonstration accounts before relying on the backup.
+Also back up `/data/source` and Caddy's certificate volume. Source archives are public software, but their immutable URLs must remain available across upgrades.
+
+To restore a database, stop both services and write a verified snapshot over the SQLite file from a one-off app container. It runs as the server's unprivileged user; `docker compose cp` would create a root-owned file that the server cannot open. The same command removes obsolete WAL and SHM companions, which is safe only while the server is stopped. Then start the app before the proxy. On the 512 MB VPS, add `-p sayboard -f compose.yaml -f deploy/compose.small.yaml` after `docker compose` in all four commands. Without the overlay, `run` tries to build the app image instead of using `SAYBOARD_IMAGE`:
+
+```sh
+docker compose stop
+docker compose run --rm --no-deps -T app node -e 'const fs = require("node:fs"); const db = process.env.SAYBOARD_DATABASE_PATH; require("node:stream/promises").pipeline(process.stdin, fs.createWriteStream(db)).then(() => { for (const suffix of ["-wal", "-shm"]) fs.rmSync(db + suffix, { force: true }); });' < /srv/backups/sayboard-backup.sqlite
+docker compose start app
+docker compose start proxy
+```
+
+Test restore with demonstration accounts before relying on the backup.
 
 When moving an already published instance, copy its retained source tree into the new `/data/source` before serving the replacement. Independent new installations do not fetch the official website. Optional build-time `SAYBOARD_SOURCE_ORIGIN` and `SAYBOARD_SOURCE_POLICY` can import checked previous archives from an existing HTTPS origin during migration.
 

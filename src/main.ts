@@ -158,10 +158,11 @@ const supported =
   "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
 function hasUnsavedDraft(): boolean {
   return (
-    draft !== null &&
-    (hasBoardChanges(board, draft) ||
-      hasDeviceLayoutChanges(deviceLayout, draftDeviceLayout) ||
-      (storageBlocked && replacementAuthorizedDraft === draft))
+    (arrangement !== null && hasBoardChanges(board, arrangement.board)) ||
+    (draft !== null &&
+      (hasBoardChanges(board, draft) ||
+        hasDeviceLayoutChanges(deviceLayout, draftDeviceLayout) ||
+        (storageBlocked && replacementAuthorizedDraft === draft)))
   );
 }
 window.addEventListener("beforeunload", (event) => {
@@ -626,7 +627,12 @@ function render() {
           document.querySelector<HTMLButtonElement>(".tile")?.focus();
           return null;
         },
-        onCancel: () => {
+        onCancel: async () => {
+          if (
+            hasUnsavedDraft() &&
+            !(await confirmChange("Discard unsaved arrangement changes?"))
+          )
+            return;
           arrangement = null;
           render();
           document.querySelector<HTMLButtonElement>(".tile")?.focus();
@@ -648,7 +654,7 @@ function render() {
     live.setAttribute("aria-live", "polite");
     shell.append(live);
     const syncIndicator = el("p", "classroom-sync-status", syncDescription());
-    syncIndicator.hidden = classroomSyncState.kind === "unlinked";
+    syncIndicator.dataset.sync = classroomSyncState.kind;
     syncIndicator.dataset.fullscreenChrome = "";
     shell.append(syncIndicator);
 
@@ -1641,7 +1647,8 @@ if (teacherBoardRequest) {
         ".classroom-sync-status",
       );
       if (indicator) {
-        indicator.hidden = state.kind === "unlinked";
+        // Fullscreen owns `hidden` on chrome; polls must not reveal it.
+        indicator.dataset.sync = state.kind;
         indicator.textContent = syncDescription();
       }
     },

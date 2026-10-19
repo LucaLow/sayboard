@@ -33,7 +33,9 @@ async function request(
       response.status === 410
         ? "This link has expired or has already been used. Ask your pilot organiser for a new one."
         : response.status === 409
-          ? "That username already exists, or cannot be reset. Check it and try again."
+          ? path === "/api/auth/activation"
+            ? "An account with this username already exists. Ask your pilot organiser for a password reset link."
+            : "That username already exists, or cannot be reset. Check it and try again."
           : response.status === 429
             ? "Too many attempts. Wait five minutes before trying again."
             : response.status === 403
@@ -42,6 +44,10 @@ async function request(
     );
   return response.json();
 }
+// Browsers compile pattern attributes with the v flag, which rejects an
+// unescaped "-" in a character class and then skips the check entirely.
+// Surrounding spaces, as in a pasted name, are trimmed before sending.
+export const usernamePattern = "\\s*[a-zA-Z0-9_\\-]+\\s*";
 export async function canInvite(): Promise<boolean> {
   return record(await request("/api/invitations")).operator === true;
 }
@@ -67,7 +73,7 @@ export function createInvitationsPanel() {
   const user = field("Teacher username");
   user.input.required = true;
   user.input.maxLength = 64;
-  user.input.pattern = "[a-zA-Z0-9_-]+";
+  user.input.pattern = usernamePattern;
   user.input.autocapitalize = "none";
   user.input.spellcheck = false;
   const kindLabel = el("label", "", "Link type");

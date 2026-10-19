@@ -296,6 +296,17 @@ export async function checkClassroomFlow({
     await tablet
       .getByRole("button", { name: "Disconnect classroom device", exact: true })
       .waitFor();
+    // Keyboard and switch users must keep their place across background polls.
+    const disconnect = await tablet
+      .getByRole("button", { name: "Disconnect classroom device", exact: true })
+      .elementHandle();
+    await disconnect.focus();
+    await new Promise((resolve) => setTimeout(resolve, 6500));
+    assert.equal(
+      await disconnect.evaluate((node) => document.activeElement === node),
+      true,
+      "Unchanged classroom polls must not replace the focused control",
+    );
     assert.equal(
       await tablet.evaluate(() => localStorage.getItem("sayboard-v2")),
       beforePairing,
@@ -552,6 +563,25 @@ export async function checkClassroomFlow({
     await applied("After speech finishes");
 
     await editDevice();
+    // A failed disconnect must be announced, not replaced by the sync status.
+    const classroomPanel = tablet.locator(".account-panel").filter({
+      has: tablet.getByRole("heading", {
+        name: "Classroom board",
+        exact: true,
+      }),
+    });
+    await device.route("**/api/device/unlink", (route) =>
+      route.fulfill({ status: 503, json: { error: "storage_unavailable" } }),
+    );
+    await classroomPanel
+      .getByRole("button", { name: "Disconnect classroom device", exact: true })
+      .click();
+    await confirm(tablet);
+    await classroomPanel
+      .getByRole("status")
+      .filter({ hasText: "Classroom hosting is unavailable on this server." })
+      .waitFor();
+    await device.unroute("**/api/device/unlink");
     await tablet
       .getByRole("button", { name: "Edit After speech finishes", exact: true })
       .click();
@@ -684,6 +714,7 @@ export async function checkClassroomFlow({
       actualBoardPreview: true,
       unlinkedFreeBoardDoesNotPollClassroom: true,
       pairOnceThenUntouchedDeviceUpdates: true,
+      classroomPollsKeepFocus: true,
       publishedBoardSurvivesReload: true,
       teacherReceivesDurablyAppliedVersion: true,
       dashboardReceiptUpdatesWithoutRefresh: true,
@@ -695,6 +726,7 @@ export async function checkClassroomFlow({
       clearingMessageUpdatesWithoutBlurring: true,
       emptyFocusedInputDoesNotBlockAutomaticUpdate: true,
       speechFinishesBeforeUpdate: true,
+      failedDisconnectIsAnnounced: true,
       caregiverDraftSurvivesPublication: true,
       idleCategoryUpdatesWithoutLearnerNavigation: true,
       removedCategoryReturnsHomeAutomatically: true,
