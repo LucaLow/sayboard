@@ -296,6 +296,17 @@ export async function checkClassroomFlow({
     await tablet
       .getByRole("button", { name: "Disconnect classroom device", exact: true })
       .waitFor();
+    // Keyboard and switch users must keep their place across background polls.
+    const disconnect = await tablet
+      .getByRole("button", { name: "Disconnect classroom device", exact: true })
+      .elementHandle();
+    await disconnect.focus();
+    await new Promise((resolve) => setTimeout(resolve, 6500));
+    assert.equal(
+      await disconnect.evaluate((node) => document.activeElement === node),
+      true,
+      "Unchanged classroom polls must not replace the focused control",
+    );
     assert.equal(
       await tablet.evaluate(() => localStorage.getItem("sayboard-v2")),
       beforePairing,
@@ -684,6 +695,7 @@ export async function checkClassroomFlow({
       actualBoardPreview: true,
       unlinkedFreeBoardDoesNotPollClassroom: true,
       pairOnceThenUntouchedDeviceUpdates: true,
+      classroomPollsKeepFocus: true,
       publishedBoardSurvivesReload: true,
       teacherReceivesDurablyAppliedVersion: true,
       dashboardReceiptUpdatesWithoutRefresh: true,

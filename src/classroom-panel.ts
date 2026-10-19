@@ -37,7 +37,9 @@ export function createClassroomPanel({
       if (section.isConnected) render(sync.state());
     }
   }
+  let shown = "";
   function render(state: SyncState) {
+    shown = JSON.stringify(state);
     content.replaceChildren();
     if (state.kind === "unlinked") {
       content.append(
@@ -129,7 +131,9 @@ export function createClassroomPanel({
         .forEach((control) => (control.disabled = true));
   }
   const dispose = sync.subscribe((state) => {
-    if (section.isConnected && !busy) render(state);
+    // Every poll republishes; replacing unchanged controls would drop focus.
+    if (section.isConnected && !busy && JSON.stringify(state) !== shown)
+      render(state);
   });
   render(sync.state());
   return { element: section, dispose };
