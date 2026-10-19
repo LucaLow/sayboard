@@ -323,6 +323,11 @@ try {
     [],
     "Double tap on a category does not speak typed text",
   );
+  assert.equal(
+    await speakButton.evaluate((node) => node === document.activeElement),
+    false,
+    "Double tap on a category does not focus what replaced it",
+  );
   await typed.waitForTimeout(500);
   await speakButton.click();
   assert.deepEqual(await typed.evaluate(() => window.__spoken), [

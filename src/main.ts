@@ -121,26 +121,28 @@ let lastInteraction = 0;
 let categoryTap = { boardId: "", time: -Infinity, area: new DOMRect() };
 // The second tap of a double tap on a category would otherwise land on
 // whatever replaced it: a word, or Type and Speak below a short category.
+// Its mousedown would also focus that control and could open the keyboard.
 // Keyboard and switch clicks have no detail.
-document.addEventListener(
-  "click",
-  (event) => {
-    const { boardId, time, area } = categoryTap;
-    if (
-      event.detail > 0 &&
-      activeBoardId === boardId &&
-      event.timeStamp - time < 400 &&
-      event.clientX >= area.left &&
-      event.clientX <= area.right &&
-      event.clientY >= area.top &&
-      event.clientY <= area.bottom
-    ) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-  },
-  true,
-);
+for (const type of ["mousedown", "click"] as const)
+  document.addEventListener(
+    type,
+    (event) => {
+      const { boardId, time, area } = categoryTap;
+      if (
+        event.detail > 0 &&
+        activeBoardId === boardId &&
+        event.timeStamp - time < 400 &&
+        event.clientX >= area.left &&
+        event.clientX <= area.right &&
+        event.clientY >= area.top &&
+        event.clientY <= area.bottom
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    },
+    true,
+  );
 const heldPointers = new Set<number>();
 let classroomPanelCleanup: (() => void) | undefined;
 let classroomSync: ReturnType<typeof createClassroomSync> | null = null;
