@@ -27,9 +27,13 @@ services:
           "-e",
           "require('node:http').get({host:'127.0.0.1',port:8080,path:'/healthz',headers:{Host:new URL(process.env.SAYBOARD_ORIGIN).host}},r=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))",
         ]
-      interval: 30s
+      # The proxy starts only after this passes, so probe soon after start.
+      # Failures in the start period do not count, so a slow first start
+      # still has at least the previous 90 seconds before turning unhealthy.
+      interval: 5s
       timeout: 5s
       retries: 3
+      start_period: 90s
   proxy:
     image: caddy:2
     network_mode: service:app
