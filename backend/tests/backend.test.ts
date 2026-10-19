@@ -300,6 +300,40 @@ describe("passwords and authentication", () => {
       401, 429, 429,
     ]);
   });
+  it("does not spend the peer budget on logins turned away for concurrency", async () => {
+    const db = store();
+    const hostedOrigin = "https://pilot.example.test";
+    const api = await createApi(
+      db,
+      { kind: "hosted", origin: hostedOrigin, passwordConcurrency: 1 },
+      () => 1_000_000,
+    );
+    const replies = await Promise.all(
+      Array.from({ length: 3 }, () =>
+        api(
+          new Request(`${hostedOrigin}/api/auth/login`, {
+            method: "POST",
+            headers: {
+              origin: hostedOrigin,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              username: "missing",
+              password: "synthetic-password-only",
+            }),
+          }),
+          peer,
+        ),
+      ),
+    );
+    expect(replies.map((reply) => reply.status).sort()).toEqual([
+      401, 429, 429,
+    ]);
+    // Only the one request that ran scrypt used an attempt.
+    for (let i = 0; i < 9; i++)
+      expect(await db.allowLogin(peer, 1_000_000)).toBe(true);
+    expect(await db.allowLogin(peer, 1_000_000)).toBe(false);
+  });
   it("rate limits password work with a persisted budget", async () => {
     const { db, api, advance } = await setup();
     for (let i = 0; i < 9; i++)

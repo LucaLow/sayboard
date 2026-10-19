@@ -200,21 +200,18 @@ export async function createApi(
         return json(200, { state: "enabled" });
       if (url.pathname === "/api/auth/login") {
         const input = credentials(await body(request));
-        if (
-          !(await store.allowLogin(peer, now())) ||
-          passwordChecks >= passwordConcurrency
-        )
-          return json(
-            429,
-            { error: "too_many_attempts" },
-            { "Retry-After": "300" },
-          );
-        // Reserve synchronously before account lookup so concurrent requests cannot
-        // pass the cap together while a future database adapter is awaiting I/O.
+        const tooMany = () =>
+          json(429, { error: "too_many_attempts" }, { "Retry-After": "300" });
+        // A request turned away only because a password check is already running
+        // does no scrypt work, so it must not spend the shared peer budget.
+        if (passwordChecks >= passwordConcurrency) return tooMany();
+        // Reserve synchronously before any await so concurrent requests cannot
+        // pass the cap together while a database adapter is awaiting I/O.
         passwordChecks++;
         let account;
         let valid: boolean;
         try {
+          if (!(await store.allowLogin(peer, now()))) return tooMany();
           account = await store.account(input.username);
           valid = await verifyPassword(
             input.password,
