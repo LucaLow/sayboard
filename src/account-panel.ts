@@ -181,7 +181,7 @@ export function createAccountPanel({
       notice.textContent = disabledAccountMessage;
       return;
     }
-    if (!accountClient.currentSession()) await accountClient.restoreSession();
+    await accountClient.checkSession();
     notice.textContent = accountClient.currentSession()
       ? "Session restored. No board was uploaded."
       : "You are signed out. Sign in to an existing account to use account backup.";
