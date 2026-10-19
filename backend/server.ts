@@ -67,8 +67,10 @@ export async function startServer(env: NodeJS.ProcessEnv) {
   const directory = await realpath(resolve(env.SAYBOARD_STATIC_DIR ?? "dist"));
   await readFile(resolve(directory, "index.html"));
   process.umask(0o077);
-  const sourceDirectory = resolve(env.SAYBOARD_DATA_DIR ?? "data", "source");
-  await retainSources(resolve(directory, "source"), sourceDirectory);
+  const retainedSources = resolve(env.SAYBOARD_DATA_DIR ?? "data", "source");
+  await retainSources(resolve(directory, "source"), retainedSources);
+  // Served files are compared after realpath, so the base must be resolved too.
+  const sourceDirectory = await realpath(retainedSources);
   let sqlite: SqliteStore | undefined;
   const getStore =
     env.SAYBOARD_STORAGE === "postgres"
