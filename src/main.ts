@@ -648,7 +648,7 @@ function render() {
     live.setAttribute("aria-live", "polite");
     shell.append(live);
     const syncIndicator = el("p", "classroom-sync-status", syncDescription());
-    syncIndicator.hidden = classroomSyncState.kind === "unlinked";
+    syncIndicator.dataset.sync = classroomSyncState.kind;
     syncIndicator.dataset.fullscreenChrome = "";
     shell.append(syncIndicator);
 
@@ -1641,7 +1641,8 @@ if (teacherBoardRequest) {
         ".classroom-sync-status",
       );
       if (indicator) {
-        indicator.hidden = state.kind === "unlinked";
+        // Fullscreen owns `hidden` on chrome; polls must not reveal it.
+        indicator.dataset.sync = state.kind;
         indicator.textContent = syncDescription();
       }
     },
