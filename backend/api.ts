@@ -205,13 +205,16 @@ export async function createApi(
         // A request turned away only because a password check is already running
         // does no scrypt work, so it must not spend the shared peer budget.
         if (passwordChecks >= passwordConcurrency) return tooMany();
-        // Reserve synchronously before any await so concurrent requests cannot
-        // pass the cap together while a database adapter is awaiting I/O.
+        // Check the budget without a slot, so a peer over its budget cannot keep
+        // the slots busy for everyone else while a database answers.
+        if (!(await store.allowLogin(peer, now()))) return tooMany();
+        // Reserve synchronously after the last await so concurrent requests
+        // cannot pass the cap together.
+        if (passwordChecks >= passwordConcurrency) return tooMany();
         passwordChecks++;
         let account;
         let valid: boolean;
         try {
-          if (!(await store.allowLogin(peer, now()))) return tooMany();
           account = await store.account(input.username);
           valid = await verifyPassword(
             input.password,

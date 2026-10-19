@@ -308,24 +308,25 @@ describe("passwords and authentication", () => {
       { kind: "hosted", origin: hostedOrigin, passwordConcurrency: 1 },
       () => 1_000_000,
     );
-    const replies = await Promise.all(
-      Array.from({ length: 3 }, () =>
-        api(
-          new Request(`${hostedOrigin}/api/auth/login`, {
-            method: "POST",
-            headers: {
-              origin: hostedOrigin,
-              "content-type": "application/json",
-            },
-            body: JSON.stringify({
-              username: "missing",
-              password: "synthetic-password-only",
-            }),
+    const login = () =>
+      api(
+        new Request(`${hostedOrigin}/api/auth/login`, {
+          method: "POST",
+          headers: {
+            origin: hostedOrigin,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            username: "missing",
+            password: "synthetic-password-only",
           }),
-          peer,
-        ),
-      ),
-    );
+        }),
+        peer,
+      );
+    const first = login();
+    // The first request is now hashing; later ones arrive while it runs.
+    await new Promise((resolve) => setImmediate(resolve));
+    const replies = await Promise.all([first, login(), login()]);
     expect(replies.map((reply) => reply.status).sort()).toEqual([
       401, 429, 429,
     ]);
@@ -333,6 +334,55 @@ describe("passwords and authentication", () => {
     for (let i = 0; i < 9; i++)
       expect(await db.allowLogin(peer, 1_000_000)).toBe(true);
     expect(await db.allowLogin(peer, 1_000_000)).toBe(false);
+  });
+  it("keeps a rate-limited peer from holding the password slot", async () => {
+    let arrived = () => {};
+    const waiting = new Promise<void>((resolve) => (arrived = resolve));
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const attacker = "192.0.2.10";
+    // A database store answers the budget check after a round trip.
+    class RemoteStore extends SqliteStore {
+      override async allowLogin(key: string, time: number) {
+        if (key === attacker) {
+          arrived();
+          await gate;
+        }
+        return super.allowLogin(key, time);
+      }
+    }
+    const db = new RemoteStore(":memory:");
+    handles.push(db);
+    for (let i = 0; i < 10; i++)
+      await SqliteStore.prototype.allowLogin.call(db, attacker, 1_000_000);
+    const hostedOrigin = "https://pilot.example.test";
+    const api = await createApi(
+      db,
+      { kind: "hosted", origin: hostedOrigin, passwordConcurrency: 1 },
+      () => 1_000_000,
+    );
+    const login = (from: string) =>
+      api(
+        new Request(`${hostedOrigin}/api/auth/login`, {
+          method: "POST",
+          headers: {
+            origin: hostedOrigin,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            username: "missing",
+            password: "synthetic-password-only",
+          }),
+        }),
+        from,
+      );
+    const flood = Array.from({ length: 5 }, () => login(attacker));
+    await waiting;
+    expect((await login(peer)).status).toBe(401);
+    release();
+    expect((await Promise.all(flood)).map((reply) => reply.status)).toEqual([
+      429, 429, 429, 429, 429,
+    ]);
   });
   it("rate limits password work with a persisted budget", async () => {
     const { db, api, advance } = await setup();
