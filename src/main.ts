@@ -118,6 +118,7 @@ let selected: string | null = null;
 let typedText = "";
 let typedMessagePending = false;
 let lastInteraction = 0;
+let categoryTap = { boardId: "", time: -Infinity, area: new DOMRect() };
 const heldPointers = new Set<number>();
 let classroomPanelCleanup: (() => void) | undefined;
 let classroomSync: ReturnType<typeof createClassroomSync> | null = null;
@@ -691,9 +692,28 @@ function render() {
       }
       const b = button(
         "",
-        () => {
-          if (tile.kind === "category") openCategory(tile.subBoardId);
-          else speak(tile);
+        (event) => {
+          // The second tap of a double tap on a category would otherwise land
+          // on the word that replaced it. Keyboard and switch clicks have no detail.
+          const { boardId, time, area } = categoryTap;
+          if (
+            event.detail > 0 &&
+            activeBoardId === boardId &&
+            event.timeStamp - time < 400 &&
+            event.clientX >= area.left &&
+            event.clientX <= area.right &&
+            event.clientY >= area.top &&
+            event.clientY <= area.bottom
+          )
+            return;
+          if (tile.kind === "category") {
+            categoryTap = {
+              boardId: tile.subBoardId,
+              time: event.timeStamp,
+              area: b.getBoundingClientRect(),
+            };
+            openCategory(tile.subBoardId);
+          } else speak(tile);
         },
         `tile ${tile.tone}${tile.kind === "category" ? " category-tile" : ""}`,
       );

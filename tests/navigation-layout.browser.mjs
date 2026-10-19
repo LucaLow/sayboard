@@ -163,6 +163,79 @@ try {
       }
     }
   }
+  // An accidental double tap opens the category but does not also speak the
+  // word that appears under the finger.
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await page.addInitScript(() => {
+    const word = (id, label) => ({
+      kind: "word",
+      id,
+      label,
+      phrase: label,
+      icon: "emoji:1f4a7",
+      tone: "blue",
+    });
+    localStorage.setItem(
+      "sayboard-v2",
+      JSON.stringify({
+        version: 2,
+        tiles: [
+          { ...word("drink", "Drink"), kind: "category", subBoardId: "drinks" },
+          word("yes", "Yes"),
+        ],
+        voice: "",
+        rate: 1,
+        size: "small",
+        subBoards: [
+          { id: "drinks", size: "small", tiles: [word("water", "Water")] },
+        ],
+      }),
+    );
+    window.__spoken = [];
+    window.SpeechSynthesisUtterance = class {
+      constructor(text) {
+        this.text = text;
+      }
+    };
+    speechSynthesis.getVoices = () => [
+      {
+        name: "Synthetic local voice",
+        voiceURI: "synthetic-local",
+        localService: true,
+        lang: "en-AU",
+      },
+    ];
+    speechSynthesis.speak = (utterance) => {
+      window.__spoken.push(utterance.text);
+      utterance.onstart?.();
+      utterance.onend?.();
+    };
+    speechSynthesis.cancel = () => {};
+  });
+  await page.goto(origin);
+  const box = await page
+    .getByRole("button", { name: "Open Drink category", exact: true })
+    .boundingBox();
+  const tap = () =>
+    page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await tap();
+  await page.waitForTimeout(120);
+  await tap();
+  await page.waitForTimeout(100);
+  assert.ok(
+    await page
+      .getByRole("button", { name: "Say Water", exact: true })
+      .isVisible(),
+  );
+  assert.deepEqual(
+    await page.evaluate(() => window.__spoken),
+    [],
+    "Double tap on a category does not speak the replacing word",
+  );
+  await page.waitForTimeout(500);
+  await tap();
+  assert.deepEqual(await page.evaluate(() => window.__spoken), ["Water"]);
+  await page.close();
   console.log(JSON.stringify({ scenarios: results.length, results }, null, 2));
 } finally {
   await browser.close();
