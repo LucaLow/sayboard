@@ -48,6 +48,7 @@ jobs:
           node tests/browser/iphone-speech.mjs
       - run: node tests/browser/contrast.mjs
       - run: npm run test:free-core
+      - run: node tests/account-panel.browser.mjs
       - run: node tests/move-board.browser.mjs
       - run: node tests/settings-editor.browser.mjs
       - run: node tests/settings-section-navigation.browser.mjs
@@ -62,6 +63,7 @@ jobs:
       - run: node tests/browser/fullscreen-app.mjs
       - run: node tests/compact-layout.browser.mjs
       - run: node tests/navigation-layout.browser.mjs
+      - run: node tests/classroom-fullscreen.browser.mjs
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

@@ -4,8 +4,10 @@
   font-size: 12px;
   line-height: 1.5;
 }
-.classroom-sync-status[hidden] {
+.classroom-sync-status[data-sync="unlinked"] {
   display: none;
 }
 
-:root[data-theme="dark"] .classroom-sync-status { color: #b8c9bf; }
+:root[data-theme="dark"] .classroom-sync-status {
+  color: #b8c9bf;
+}

@@ -99,6 +99,7 @@ globalThis.onmessage = async (event: MessageEvent<unknown>) => {
       send({ kind: 'audio', id: data.id, samples, sampleRate: audio.sampling_rate, elapsedMs: performance.now() - started }, [samples.buffer]);
     }
   } catch {
-    send({ kind: 'error' });
+    // A failed phrase names its job, so only that phrase fails. A failed load has no id.
+    send({ kind: 'error', id: data.kind === 'generate' && 'id' in data ? data.id : null });
   }
 };

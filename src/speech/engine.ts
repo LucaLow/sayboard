@@ -19,6 +19,8 @@ export type SpeakOptions = {
 };
 export interface LocalModel {
   readonly identity: string;
+  // True while the model can generate; a failed phrase leaves it true. A model without it counts as stopped after any failure.
+  readonly available?: boolean;
   load(signal: AbortSignal, progress: (fraction: number) => void): Promise<void>;
   generate(text: string, rate: number): Promise<PhraseAudio>;
   dispose(): void;
@@ -124,7 +126,7 @@ export class SpeechEngine {
             prepared++; progress(prepared);
           }
         } catch {
-          if (current()) this.update({ phase: 'error', detail: 'Phrase preparation failed. The device voice is still available.' });
+          if (current() && model.available !== true) this.update({ phase: 'error', detail: 'Phrase preparation failed. The device voice is still available.' });
         } finally { resolve({ prepared, cancelled: !current() || prepared !== selected.length }); }
       };
       void this.drain();
@@ -147,7 +149,13 @@ export class SpeechEngine {
       onEnd: () => { if (current()) options.onEnd?.(); },
       onError: detail => { if (current()) options.onError?.(detail); },
     };
-    if (this.mode !== 'model' || this.status.phase !== 'ready' || !this.model || text.length > 200) {
+    const model = this.model;
+    if (this.mode !== 'model' || !model || text.length > 200) {
+      this.output.system(text, guarded); return;
+    }
+    const key = JSON.stringify([model.identity, guarded.rate, text]);
+    // Audio already in memory still plays after the model stops. New audio needs a ready model.
+    if (this.status.phase !== 'ready' && !this.cache.get(key)) {
       this.output.system(text, guarded); return;
     }
     let canPlayImmediately: boolean;
@@ -155,8 +163,6 @@ export class SpeechEngine {
       this.update({ phase: 'error', detail: 'Local audio is unavailable. Using the device voice.' });
       this.output.system(text, guarded); return;
     }
-    const model = this.model;
-    const key = JSON.stringify([model.identity, guarded.rate, text]);
     let fallbackSpoken = false;
     // Without an on-device voice, local audio is the only speech for this tap.
     // Hold the device error while queued local audio can still play.
@@ -179,7 +185,8 @@ export class SpeechEngine {
     const fail = () => {
       clearDeadline();
       if (current()) {
-        this.update({ phase: 'error', detail: 'Local voice failed. Using the device voice.' });
+        // A failed phrase or playback keeps the model for later phrases. Only a stopped model needs reloading.
+        if (model.available !== true) this.update({ phase: 'error', detail: 'Local voice failed. Using the device voice.' });
         fallback();
       }
     };

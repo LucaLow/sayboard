@@ -59,6 +59,12 @@ try {
       exact: true,
     });
     await search.fill("water");
+    await search.press("Enter");
+    assert.equal(
+      await dialog.isVisible(),
+      true,
+      "Enter in symbol search keeps the tile form open",
+    );
     await kind.selectOption("icon");
     const first = found.getByRole("button").first();
     assert.equal(await first.getAttribute("data-symbol-id"), "glass-water");

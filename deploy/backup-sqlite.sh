@@ -22,8 +22,9 @@ stamp=$(date -u +%Y%m%dT%H%M%SZ)
 snapshot="/data/backup-${stamp}-$$.sqlite"
 compose=(docker compose -p sayboard -f compose.yaml -f deploy/compose.small.yaml)
 cleanup() {
+  # Opening the WAL-mode snapshot for quick_check creates -wal and -shm companions.
   "${compose[@]}" exec -T app node -e \
-    'require("node:fs").rmSync(process.argv[1], {force:true})' "$snapshot" >/dev/null 2>&1 || true
+    'const fs=require("node:fs"); for (const suffix of ["", "-wal", "-shm"]) fs.rmSync(process.argv[1] + suffix, {force:true});' "$snapshot" >/dev/null 2>&1 || true
   rm -rf -- "$temporary"
 }
 trap cleanup EXIT

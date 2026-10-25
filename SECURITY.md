@@ -1,6 +1,6 @@
 # Security policy
 
-Sayboard is a prototype. Use demonstration data while testing a new installation. Verify account isolation, backup restore and the intended devices before accepting private records. Accounts are operator-provisioned; public signup and email recovery are not implemented.
+Sayboard is a prototype. Use demonstration data while testing a new installation. Verify account isolation, backup restore and the intended devices before accepting private records. Accounts are operator-provisioned or created from organiser invitations. Organisers can issue password reset links, optionally by email; public signup and self-service recovery are not implemented.
 
 ## Report a vulnerability privately
 

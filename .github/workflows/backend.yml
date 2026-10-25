@@ -21,3 +21,13 @@ jobs:
       - run: npm run --prefix backend check
       - run: npm test
       - run: npm run build
+      - run: npm run build:server
+      - run: npx playwright install --with-deps chromium webkit
+      - name: Check optional Google sign-in through the emitted server
+        run: node tests/google-signin.browser.mjs
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: google-signin-failure
+          retention-days: 7
+          path: test-results/google-signin/

@@ -67,6 +67,34 @@ it("never invokes an unspecified default or remote voice when local voices are a
   expect(error).toHaveBeenCalledOnce();
 });
 
+it("keeps the device utterance referenced until it ends or is cancelled", () => {
+  const local = { voiceURI: "local", localService: true };
+  const speak = vi.fn();
+  const end = vi.fn();
+  class Utterance {
+    voice: unknown;
+    rate = 1;
+    onend?: () => void;
+    constructor(public text: string) {}
+  }
+  vi.stubGlobal("SpeechSynthesisUtterance", Utterance);
+  vi.stubGlobal("window", {
+    SpeechSynthesisUtterance: Utterance,
+    speechSynthesis: { getVoices: () => [local], speak, cancel: vi.fn() },
+  });
+  const output = new BrowserSpeechOutput();
+  output.system("Help", { onEnd: end });
+  const first: Utterance = speak.mock.calls[0][0];
+  expect(output["utterance"]).toBe(first);
+  first.onend?.();
+  expect(end).toHaveBeenCalledOnce();
+  expect(output["utterance"]).toBeNull();
+  output.system("Water", {});
+  expect(output["utterance"]).toBe(speak.mock.calls[1][0]);
+  output.cancel();
+  expect(output["utterance"]).toBeNull();
+});
+
 it("resolves the original saved URI when that voice arrives after startup", () => {
   const fallback = { voiceURI: "fallback-local", localService: true };
   const saved = { voiceURI: "saved-local", localService: true };
