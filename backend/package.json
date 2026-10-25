@@ -23,6 +23,7 @@
     "vitest": "^4.1.12"
   },
   "dependencies": {
+    "jose": "^6.2.13",
     "nodemailer": "^10.1.4",
     "pg": "^8.23.1"
   }

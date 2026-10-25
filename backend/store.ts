@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { hashPassword } from "./password.js";
 import { SqliteClassrooms } from "./classroom-store.js";
 import { SqliteOnboarding } from "./onboarding.js";
+import { SqliteGoogleStore } from "./google-store.js";
 
 import type { Account, Session, SavedBoard, Store } from "./store-contract.js";
 
@@ -13,6 +14,7 @@ export class SqliteStore implements Store {
   private db: DatabaseSync;
   readonly classrooms: SqliteClassrooms;
   readonly onboarding: SqliteOnboarding;
+  readonly google: SqliteGoogleStore;
   constructor(path: string) {
     if (path !== ":memory:")
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
@@ -42,6 +44,7 @@ export class SqliteStore implements Store {
     `);
     this.classrooms = new SqliteClassrooms(this.db);
     this.onboarding = new SqliteOnboarding(this.db);
+    this.google = new SqliteGoogleStore(this.db);
   }
   close() {
     this.db.close();

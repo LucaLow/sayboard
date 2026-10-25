@@ -1,0 +1,26 @@
+.google-signin-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid #747775;
+  border-radius: 4px;
+  background: #fff;
+  color: #1f1f1f;
+  font:
+    500 15px Arial,
+    sans-serif;
+  cursor: pointer;
+}
+.google-signin-button:hover {
+  background: #f2f2f2;
+}
+.google-signin-button:focus-visible {
+  outline: 3px solid #1a73e8;
+  outline-offset: 3px;
+}
+.google-signin-button img {
+  flex: none;
+}

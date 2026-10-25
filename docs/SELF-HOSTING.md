@@ -1,6 +1,6 @@
 # Run your own Sayboard
 
-The free app needs no account service. Optional accounts use the same server and a local SQLite database. There is no managed-service dependency, public signup or email requirement. Operators create accounts and reset passwords through a server command.
+The free app needs no account service. Optional accounts use the same server and a local SQLite database. There is no managed-service dependency or email requirement for password accounts. Public signup is disabled by default. Operators create accounts and reset passwords through a server command, or enable optional Google teacher sign-in and explicitly allow new Google accounts.
 
 ## Deploy on a VPS with Docker Compose
 
@@ -40,6 +40,8 @@ To reset an existing account, replace `create teacher` with `reset-password teac
 Open the site, enter caregiver mode, expand **Backup and transfer**, and sign in. Choose explicitly when to save or load a copy. Saving an account copy does not replace the working local board. A loaded copy first becomes a caregiver draft; **Save board** applies it to the device.
 
 The teacher dashboard is `/teacher`. Its [classroom workflow](TEACHER-PILOT.md) uses the same adult account, separate classroom drafts and scoped device links. Classroom storage requires SQLite.
+
+Optional [Google teacher sign-in](GOOGLE-SIGN-IN.md) lets adults start without choosing another username or password. It requires a Google Cloud web OAuth client and server-only credentials. Existing passwords and invitations remain available; Google is disabled by default.
 
 ### Invite-only onboarding and email
 
