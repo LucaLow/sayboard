@@ -2,15 +2,21 @@
 
 The pilot runs the complete app, authentication, dashboard and SQLite database on one VPS. The official free app is [sayboard.org](https://sayboard.org). Use [classroom.sayboard.org/teacher](https://classroom.sayboard.org/teacher) for the hosted pilot. Independent installations use their own hostname and `/teacher`.
 
+## Try before signing in
+
+Open `/teacher` and choose **Try a board**. It opens the real communication app with a separate example stored only in that browser tab. Try the tiles, use caregiver controls to edit the example, and export it if needed. This path does not read or replace the device's saved communication board, sign in, or link a classroom.
+
+Choose **Save to teacher workspace** when the example is worth keeping. In the editor, **Save changes and continue to teacher workspace** explicitly saves the open example changes first. The example and save intent survive sign-in in the same tab, including a Google redirect. Nothing is uploaded until the teacher submits the classroom setup or chooses to save the example as a new learner board. Closing the tab can lose the example; export it before switching browsers or devices.
+
 ## First classroom
 
 1. Open your organiser's private invitation, choose a password of at least 16 characters, and sign in with the username shown. Invitations work once and expire after 48 hours. Existing operator-created accounts can sign in directly. There is no public signup, student email or student password.
-2. Create a classroom, then add a profile using an alias such as `Learner A`. Begin with demonstration vocabulary.
+2. On an empty workspace, enter a classroom name and learner alias such as `Learner A`, then choose **Create first board**. This creates both together and opens the board workspace. If you came from the example, the form explains that this saves it as a private draft on the server. Start with demonstration vocabulary. Returning teachers can create additional classrooms and add profiles separately.
 3. Choose **Edit board**. The existing board editor supports tiles, categories, import and export. **Save classroom draft** stores the draft on the server.
 4. Choose **Preview board** to try the actual communication view. Return to the dashboard and **Publish saved draft** when it is ready.
 5. Enter a device name and create a pairing code. The code expires after 10 minutes and works once. Creating another code replaces the previous unused code for that profile.
-6. On the intended device, open the same classroom hostname. Choose **Caregiver controls**, then **Edit board and settings**, and expand **Backup and transfer**.
-7. Under **Classroom board**, enter the pairing code and choose **Link classroom device**. Confirm the initial connection. This authorises the teacher's publications to replace this device's saved board automatically.
+6. On the intended device, open the address shown in the dashboard, ending in `/?linkClassroom=1`. It opens the existing connection screen and focuses the code field. The link contains no code, credentials or learner information and does not link the device by itself.
+7. Under **Classroom board**, enter the pairing code and choose **Link classroom device**. Confirm the initial connection, then choose **Back to board**. This authorises the teacher's publications to replace this device's saved board automatically. The usual caregiver controls and **Backup and transfer** path remains available.
 
 After pairing, leave the learner's device on its communication board. Edit and **Save classroom draft** from the teacher editor, then choose **Publish saved draft** in the dashboard. The learner's device checks for publications automatically while the app is open. No repeated load or save steps are required on that device.
 
@@ -20,7 +26,9 @@ The dashboard's **Classroom devices** section refreshes device reports automatic
 
 ## Recover or remove access
 
-Select an older version in the dashboard to restore it into the draft, then preview and publish separately. Linked devices receive the new publication automatically at the next safe point.
+**More board options** contains export, refresh and copy controls. These do not need to be set up before trying or connecting the first board.
+
+Open **Published versions** and select an older version in the dashboard to restore it into the draft, then preview and publish separately. Linked devices receive the new publication automatically at the next safe point.
 
 Revoke a device in the dashboard to stop future downloads. A device can also disconnect itself. Neither action erases its working local board. Device credentials expire after 30 days; pair again when needed. Clearing browser cookies also requires pairing again.
 

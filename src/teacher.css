@@ -549,3 +549,93 @@
     flex: 1 1 auto;
   }
 }
+
+/* First visit: a useful example before account setup. */
+.teacher-entry-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+  margin-top: 30px;
+}
+.teacher-welcome {
+  background: #e8efdf;
+  border-color: #9eb492;
+}
+.teacher-welcome h2 {
+  max-width: 360px;
+  font-size: clamp(26px, 3vw, 34px);
+}
+.teacher-welcome > .primary {
+  margin: 12px 0;
+}
+.teacher-entry-grid .teacher-login {
+  max-width: none;
+  margin-top: 0;
+}
+.teacher-first-board-card {
+  max-width: 720px;
+  width: 100%;
+}
+.teacher-first-board {
+  max-width: 480px;
+}
+.teacher-first-board > .teacher-muted {
+  margin-top: -6px;
+}
+.teacher-device-instructions {
+  padding-left: 24px;
+  line-height: 1.65;
+  max-width: 680px;
+}
+.teacher-device-instructions li {
+  padding: 4px 0 4px 6px;
+}
+.teacher-status:focus-visible,
+.teacher-shell h1:focus-visible {
+  outline: 3px solid #215e52;
+  outline-offset: 5px;
+}
+@media (max-width: 720px) {
+  .teacher-entry-grid {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+  .teacher-entry-grid .teacher-login {
+    width: 100%;
+  }
+  .teacher-first-board-card {
+    width: auto;
+  }
+}
+
+.teacher-progress li[aria-current="step"] {
+  background: #e8efdf;
+  box-shadow: inset 0 -3px #2c6352;
+}
+.teacher-active-step {
+  border-color: #678a60;
+  background: #f2f6eb;
+}
+
+.teacher-next-step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px;
+  border: 1px solid #9eb492;
+  border-radius: 16px;
+  background: #e8efdf;
+  margin-top: 20px;
+}
+.teacher-next-step p {
+  margin: 0;
+  flex: 1 1 260px;
+  line-height: 1.5;
+}
+.teacher-publication-ready {
+  background: #fffefa;
+  border-color: #c4d0c5;
+}
