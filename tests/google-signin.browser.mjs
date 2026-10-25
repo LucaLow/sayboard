@@ -206,7 +206,11 @@ const proxy = createHttpsServer(
         response.pipe(outgoing);
       },
     );
-    upstream.on("error", () => {
+    upstream.on("error", (error) => {
+      navigationChecks.push({
+        path: new URL(incoming.url, origin).pathname,
+        upstreamError: error.code ?? "unknown",
+      });
       outgoing.writeHead(502);
       outgoing.end();
     });
@@ -222,14 +226,18 @@ const client = await request.newContext({
   ignoreHTTPSErrors: true,
 });
 async function stop() {
-  if (!app || app.exitCode !== null) return;
-  app.kill("SIGTERM");
+  const child = app;
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
   await new Promise((done) => {
-    app.once("exit", done);
-    setTimeout(() => {
-      app.kill("SIGKILL");
+    // Capture this process and cancel its watchdog before a replacement starts.
+    // The old timer must never terminate a newly assigned `app`.
+    const watchdog = setTimeout(() => child.kill("SIGKILL"), 5000);
+    watchdog.unref();
+    child.once("exit", () => {
+      clearTimeout(watchdog);
       done();
-    }, 5000).unref();
+    });
+    child.kill("SIGTERM");
   });
 }
 async function start(google) {
@@ -297,7 +305,11 @@ try {
     page.setDefaultTimeout(15_000);
     page.on("response", (response) => {
       const url = new URL(response.url());
-      if (/google|authorize|approve/.test(url.pathname))
+      if (
+        /google|authorize|approve|api\/auth\/|api\/classrooms/.test(
+          url.pathname,
+        )
+      )
         navigationChecks.push({
           path: url.pathname,
           status: response.status(),
@@ -331,6 +343,15 @@ try {
     });
   }
   await start(true);
+  // Regression check: the previous server's five-second shutdown watchdog must
+  // not terminate this replacement, even if browser interaction takes longer.
+  await new Promise((done) => setTimeout(done, 6000));
+  assert.equal(
+    (await client.get("/healthz")).status(),
+    200,
+    "Restarted server survives the previous process shutdown watchdog",
+  );
+  report.restartWatchdogDoesNotKillReplacement = true;
   for (const [engine, type] of [
     ["chromium", chromium],
     ["webkit", webkit],
@@ -362,7 +383,11 @@ try {
     page.setDefaultTimeout(15_000);
     page.on("response", (response) => {
       const url = new URL(response.url());
-      if (/google|authorize|approve/.test(url.pathname))
+      if (
+        /google|authorize|approve|api\/auth\/|api\/classrooms/.test(
+          url.pathname,
+        )
+      )
         navigationChecks.push({
           path: url.pathname,
           status: response.status(),
