@@ -8,7 +8,8 @@ import {
   type ClassroomDetail,
   type ProfileDetail,
 } from "./classroom-contract";
-import { serializeBoard } from "./board";
+import { serializeBoard, type Board } from "./board";
+import { pendingTeacherDemo, clearTeacherDemoIntent } from "./teacher-demo";
 import "./style.css";
 import "./teacher.css";
 import {
@@ -32,6 +33,130 @@ let pairing: { code: string; expiresAt: number } | null = null;
 const fieldValues = new Map<string, string>();
 let deviceStatusContainer: HTMLElement | null = null;
 let refreshingDevices = false;
+let nextFocus = "h1";
+let exampleBoard: Board | null = null;
+try {
+  exampleBoard = pendingTeacherDemo(sessionStorage);
+} catch {
+  // A blocked tab store never falls back to the learner's device board.
+}
+function consumedExample() {
+  exampleBoard = null;
+  try {
+    clearTeacherDemoIntent(sessionStorage);
+  } catch {
+    // Saving a board has already succeeded; tab storage is optional.
+  }
+}
+function textField(key: string, labelText: string, placeholder = "") {
+  const label = el("label", "", labelText);
+  const input = el("input");
+  input.required = true;
+  input.maxLength = 100;
+  input.value = fieldValues.get(key) ?? "";
+  input.placeholder = placeholder;
+  input.oninput = () => fieldValues.set(key, input.value);
+  label.append(input);
+  return { label, input };
+}
+function firstBoardForm() {
+  const setup = el("form", "teacher-form teacher-first-board");
+  const classroom = textField(
+    "first-classroom",
+    "Classroom name",
+    "My classroom",
+  );
+  const learner = textField("first-learner", "Learner alias", "Learner A");
+  const submit = el("button", "button primary", "Create first board");
+  submit.type = "submit";
+  setup.append(
+    classroom.label,
+    learner.label,
+    el(
+      "p",
+      "teacher-muted",
+      "Use an alias instead of a learner's full name. Learners need no email or account.",
+    ),
+    submit,
+  );
+  setup.onsubmit = (event) => {
+    event.preventDefault();
+    const name = classroom.input.value.trim();
+    const alias = learner.input.value.trim();
+    if (!name || !alias) return;
+    void perform(async () => {
+      const created = await teacherClient.create(name);
+      rooms = [...rooms, created];
+      room = { ...created, profiles: [] };
+      profile = null;
+      pairing = null;
+      rememberLocation();
+      // Keep a recoverable classroom if learner creation fails; retrying from
+      // that classroom must not create another empty classroom.
+      fieldValues.set("profile", alias);
+      profile = await teacherClient.addProfile(
+        created.id,
+        alias,
+        exampleBoard ?? undefined,
+      );
+      room = await teacherClient.classroom(created.id);
+      consumedExample();
+      fieldValues.delete("first-classroom");
+      fieldValues.delete("first-learner");
+      fieldValues.delete("profile");
+      rememberLocation();
+      notice =
+        "Your first board is ready. Try it, or edit the words for your learner.";
+    });
+  };
+  return setup;
+}
+function exampleForExistingClassroom() {
+  const card = el("section", "teacher-card teacher-first-board-card");
+  const save = el("form", "teacher-form");
+  const label = el("label", "", "Save in classroom");
+  const select = el("select");
+  select.id = "teacher-example-classroom";
+  label.htmlFor = select.id;
+  for (const value of rooms) select.append(new Option(value.name, value.id));
+  const alias = textField("example-learner", "Learner alias", "Learner A");
+  const submit = el(
+    "button",
+    "button primary",
+    "Save example as a new learner board",
+  );
+  submit.type = "submit";
+  save.append(label, select, alias.label, submit);
+  save.onsubmit = (event) => {
+    event.preventDefault();
+    const classroom = rooms.find((value) => value.id === select.value);
+    const name = alias.input.value.trim();
+    if (!classroom || !name || !exampleBoard) return;
+    void perform(async () => {
+      profile = await teacherClient.addProfile(
+        classroom.id,
+        name,
+        exampleBoard ?? undefined,
+      );
+      room = await teacherClient.classroom(classroom.id);
+      consumedExample();
+      fieldValues.delete("example-learner");
+      rememberLocation();
+      notice =
+        "Example saved as a private classroom draft. Try it before publishing.";
+    });
+  };
+  card.append(
+    el("h2", "", "Keep the board you tried"),
+    el(
+      "p",
+      "",
+      "Create a new learner board from the example in this tab. Saving sends that board to your teacher workspace.",
+    ),
+    save,
+  );
+  return card;
+}
 
 function lastContact(timestamp: number | null) {
   if (timestamp === null) return "No contact reported yet";
@@ -214,6 +339,16 @@ async function perform(run: () => Promise<void>) {
   } finally {
     busy = false;
     render();
+    const target = root?.querySelector<HTMLElement>(
+      errorNotice ? ".teacher-status" : nextFocus,
+    );
+    if (target) {
+      target.tabIndex = -1;
+      target.focus({ preventScroll: true });
+      if (!errorNotice && nextFocus !== "h1")
+        target.scrollIntoView({ block: "center" });
+    }
+    nextFocus = "h1";
   }
 }
 function clearPrivateView() {
@@ -243,6 +378,7 @@ function form(
   const form = el("form", "teacher-form");
   const label = el("label", "", labelText);
   const input = el("input");
+  input.id = "teacher-" + key;
   input.required = true;
   input.maxLength = key === "device" ? 60 : 100;
   input.value = fieldValues.get(key) ?? "";
@@ -304,6 +440,7 @@ function render() {
       ),
       action("Sign out", async () => {
         await accountClient.logout();
+        consumedExample();
         clearPrivateView();
         notice = "Signed out.";
       }),
@@ -377,7 +514,25 @@ function render() {
         "Need a password reset? Contact your Sayboard administrator. Student accounts and email addresses are not required.",
       ),
     );
-    shell.append(card, status);
+    const welcome = el("section", "teacher-card teacher-welcome");
+    welcome.append(
+      el("p", "teacher-eyebrow", "NEW TO SAYBOARD?"),
+      el("h2", "", "Try a board before you sign up"),
+      el(
+        "p",
+        "",
+        "Hear the words, change a few tiles, and see what could work for your learner. No account or student details needed.",
+      ),
+      link("Try a board", "/?teacherDemo=1", "button primary"),
+      el(
+        "p",
+        "teacher-muted",
+        "Your example stays in this tab. Your saved device board is unchanged.",
+      ),
+    );
+    const entry = el("div", "teacher-entry-grid");
+    entry.append(welcome, card);
+    shell.append(entry, status);
   } else if (!room) {
     shell.append(
       el("h1", "", "Your classrooms"),
@@ -397,39 +552,41 @@ function render() {
       );
       grid.append(card);
     }
-    if (!rooms.length)
-      grid.append(
+    if (!rooms.length) {
+      const create = el("section", "teacher-card teacher-first-board-card");
+      create.append(
+        el("p", "teacher-eyebrow", "LET'S GET STARTED"),
+        el("h2", "", "Your first classroom, step by step"),
         el(
           "p",
-          "teacher-empty",
-          "Start with a demonstration classroom. You can prepare and test boards before linking a learner’s device.",
+          "",
+          exampleBoard
+            ? "Keep the board you just tried. Create a classroom and learner alias to save your example as a private draft on this server."
+            : "Give your classroom a name and add one learner alias. We'll start a board you can try and change.",
+        ),
+        firstBoardForm(),
+      );
+      grid.append(create);
+    } else {
+      const create = el("section", "teacher-card");
+      create.append(
+        el("h2", "", "Create a classroom"),
+        form(
+          "classroom",
+          "Classroom name",
+          "Create classroom",
+          async (name) => {
+            const created = await teacherClient.create(name);
+            rooms = await teacherClient.list();
+            await loadRoom(created);
+          },
         ),
       );
-    const create = el("section", "teacher-card");
-    create.append(
-      el("h2", "", "Create a classroom"),
-      form("classroom", "Classroom name", "Create classroom", async (name) => {
-        const created = await teacherClient.create(name);
-        rooms = await teacherClient.list();
-        await loadRoom(created);
-      }),
-    );
-    grid.append(create);
-    shell.append(grid);
-    if (!rooms.length) {
-      const guide = el("ol", "teacher-start-guide");
-      for (const step of [
-        "Create a classroom and add a learner alias.",
-        "Edit and preview the learner’s board.",
-        "Publish a version when it is ready.",
-        "Link a learner’s device once. Future publications arrive automatically.",
-      ])
-        guide.append(el("li", "", step));
-      shell.append(
-        el("h2", "teacher-guide-heading", "Your first classroom, step by step"),
-        guide,
-      );
+      grid.append(create);
     }
+    if (exampleBoard && rooms.length)
+      shell.append(exampleForExistingClassroom());
+    shell.append(grid);
     if (operator) shell.append(createInvitationsPanel());
   } else if (!profile) {
     const current = room;
@@ -480,10 +637,17 @@ function render() {
       el(
         "p",
         "",
-        "Each profile starts with the starter board. Edit it or import an existing Sayboard file.",
+        exampleBoard
+          ? "Your example is still in this tab. Add the learner to save that example as a private classroom draft."
+          : "Each profile starts with the starter board. Edit it or import an existing Sayboard file.",
       ),
       form("profile", "Profile alias", "Add profile", async (label) => {
-        profile = await teacherClient.addProfile(current.id, label);
+        profile = await teacherClient.addProfile(
+          current.id,
+          label,
+          exampleBoard ?? undefined,
+        );
+        consumedExample();
         room = await teacherClient.classroom(current.id);
         rememberLocation();
         notice =
@@ -512,6 +676,9 @@ function render() {
   } else {
     const current = profile;
     const classroom = room;
+    const connecting = current.publishedVersion > 0 && !current.devices.length;
+    const readyToPublish =
+      current.publishedVersion === 0 && current.revision > 1;
     shell.append(
       action("Back to " + classroom.name, () => loadRoom(classroom)),
       el("h1", "", current.label),
@@ -522,6 +689,32 @@ function render() {
       ),
       status,
     );
+    if (connecting) {
+      const next = el("section", "teacher-next-step");
+      const connect = button(
+        "Connect learner device",
+        () => {
+          const setup = root.querySelector<HTMLDetailsElement>(
+            "#teacher-device-setup",
+          );
+          if (setup) setup.open = true;
+          const name = root.querySelector<HTMLInputElement>("#teacher-device");
+          name?.focus({ preventScroll: true });
+          name?.scrollIntoView({ block: "center" });
+        },
+        "button primary",
+      );
+      connect.setAttribute("aria-controls", "teacher-device-setup");
+      next.append(
+        el(
+          "p",
+          "",
+          "Your board is published. Connect a learner's device to use it.",
+        ),
+        connect,
+      );
+      shell.append(next);
+    }
     const progress = el("ol", "teacher-progress");
     progress.setAttribute("aria-label", "Board setup");
     for (const [title, detail] of [
@@ -540,6 +733,12 @@ function render() {
       ],
     ]) {
       const step = el("li");
+      if (
+        (connecting && title === "3. Connect") ||
+        (readyToPublish && title === "2. Publish") ||
+        (!current.publishedVersion && !readyToPublish && title === "1. Prepare")
+      )
+        step.setAttribute("aria-current", "step");
       const description = el("span", "", detail);
       if (title === "3. Connect") description.dataset.deviceCount = "";
       step.append(el("strong", "", title), description);
@@ -551,7 +750,7 @@ function render() {
     const homeTiles = current.board.tiles.filter(Boolean).length;
     draft.append(
       el("p", "teacher-eyebrow", "DRAFT"),
-      el("h2", "", "Prepare the board"),
+      el("h2", "", "1. Try and edit the board"),
       el(
         "p",
         "",
@@ -561,9 +760,12 @@ function render() {
     const actions = el("div", "teacher-actions");
     const editor = `/?teacherBoard=${current.id}&classroom=${classroom.id}`;
     actions.append(
-      link("Edit board", editor, "button primary"),
+      link(
+        "Edit board",
+        editor,
+        connecting || readyToPublish ? "button" : "button primary",
+      ),
       link("Preview board", editor + "&preview=1"),
-      button("Export draft", () => exportProfile(current)),
     );
     const boardPreview = el("div", "teacher-board-preview");
     boardPreview.setAttribute("aria-label", "Saved draft vocabulary preview");
@@ -601,9 +803,23 @@ function render() {
         },
       ),
     );
-    draft.append(duplicate);
+    const tools = el("details", "teacher-secondary-tools");
+    tools.append(
+      el("summary", "", "More board options"),
+      button("Export draft", () => exportProfile(current)),
+      action("Refresh saved draft", async () => {
+        await refreshProfile();
+        notice = "Saved draft refreshed.";
+      }),
+      duplicate,
+    );
+    draft.append(tools);
     grid.append(draft);
-    const publish = el("section", "teacher-card teacher-publication");
+    const publish = el(
+      "section",
+      "teacher-card teacher-publication" +
+        (connecting ? " teacher-publication-ready" : ""),
+    );
     publish.append(
       el("p", "teacher-eyebrow", "PUBLISHED"),
       el(
@@ -629,19 +845,22 @@ function render() {
             return;
           profile = await teacherClient.publish(current.id, current.revision);
           room = await teacherClient.classroom(classroom.id);
-          notice = `Version ${profile.publishedVersion} published. Linked devices update automatically. Check their reports below to confirm receipt.`;
+          notice = profile.devices.length
+            ? `Version ${profile.publishedVersion} published. Linked devices update automatically. Check their reports below to confirm receipt.`
+            : "Board published. Next, connect a learner's device below.";
+          if (!profile.devices.length) nextFocus = "#teacher-device";
         },
-        true,
+        readyToPublish,
       ),
-      action("Refresh saved draft", async () => {
-        await refreshProfile();
-        notice = "Saved draft refreshed.";
-      }),
     );
     grid.append(publish);
-    const devices = el("section", "teacher-card teacher-devices");
+    const devices = el(
+      "section",
+      "teacher-card teacher-devices" +
+        (connecting ? " teacher-active-step" : ""),
+    );
     devices.append(
-      el("h2", "", "Classroom devices"),
+      el("h2", "", "3. Connect a learner device"),
       el(
         "p",
         "",
@@ -653,20 +872,24 @@ function render() {
     renderDevices(reports, current);
     devices.append(reports);
     const setup = el("details", "teacher-device-setup");
+    setup.id = "teacher-device-setup";
     setup.open = !current.devices.length || pairing !== null;
     setup.append(
       el("summary", "", "Link a learner device"),
-      el(
-        "p",
-        "teacher-muted",
-        "On the learner’s device, open the address below. Choose Caregiver controls → Edit board and settings → Backup and transfer → Classroom board. Enter the code, choose Link classroom device and confirm the initial connection.",
-      ),
+      el("ol", "teacher-device-instructions", ""),
       form("device", "Device name", "Create pairing code", async (name) => {
         pairing = await teacherClient.pairing(current.id, name);
         notice =
           "Enter this code on the intended device within ten minutes and confirm the initial connection. Future publications sync automatically. Creating another code replaces this one.";
       }),
     );
+    const instructions = setup.querySelector("ol");
+    for (const instruction of [
+      "Open the address below on the learner's device. It opens the connection screen directly.",
+      "Enter the code below and choose Link classroom device.",
+      "Confirm the connection, then choose Back to board. Your learner's board will arrive when communication is idle.",
+    ])
+      instructions?.append(el("li", "", instruction));
     const address = el(
       "label",
       "teacher-link-field",
@@ -674,7 +897,7 @@ function render() {
     );
     const addressInput = el("input");
     addressInput.readOnly = true;
-    addressInput.value = location.origin + "/";
+    addressInput.value = location.origin + "/?linkClassroom=1";
     addressInput.onclick = () => addressInput.select();
     address.append(addressInput);
     setup.insertBefore(address, setup.querySelector("form"));

@@ -10,6 +10,11 @@ import { createAccountPanel } from "./account-panel";
 import { createClassroomPanel } from "./classroom-panel";
 import { createClassroomSync, type SyncState } from "./classroom-sync";
 import { teacherClient } from "./classroom-client";
+import {
+  readTeacherDemo,
+  saveTeacherDemo,
+  teacherDemoPendingKey,
+} from "./teacher-demo";
 import { accountClient } from "./account";
 import { id, type ProfileDetail } from "./classroom-contract";
 import { createSymbolPicker } from "./symbol-picker";
@@ -56,6 +61,8 @@ const root = document.querySelector<HTMLDivElement>("#app");
 if (!root) throw new Error("Missing app root");
 const teacherParameters = new URLSearchParams(location.search);
 const teacherBoardRequest = teacherParameters.get("teacherBoard");
+const teacherDemo =
+  teacherParameters.get("teacherDemo") === "1" && !teacherBoardRequest;
 let teacherEditing: ProfileDetail | null = null;
 let teacherSaving = false;
 function teacherDashboard() {
@@ -74,7 +81,13 @@ let storageBlocked = false;
 let hasStoredBoard = false;
 let replacementAuthorizedDraft: Board | null = null;
 try {
-  const loaded = loadStoredBoard(localStorage);
+  const loaded: ReturnType<typeof loadStoredBoard> = teacherDemo
+    ? {
+        kind: "loaded",
+        board: readTeacherDemo(sessionStorage) ?? starterBoard(),
+        migrated: false,
+      }
+    : loadStoredBoard(localStorage);
   if (loaded.kind === "loaded") {
     board = loaded.board;
     hasStoredBoard = true;
@@ -107,7 +120,8 @@ try {
     window.innerWidth,
     board.size,
   );
-  localStorage.setItem(deviceLayoutKey, JSON.stringify(deviceLayout));
+  if (!teacherDemo)
+    localStorage.setItem(deviceLayoutKey, JSON.stringify(deviceLayout));
 } catch {
   // Restricted storage keeps this layout stable for the current session.
 }
@@ -282,6 +296,18 @@ function speakText(phrase: string, id: string | null, settings: Board = board) {
   });
 }
 function persist(next: Board) {
+  if (teacherDemo) {
+    try {
+      saveTeacherDemo(sessionStorage, next);
+      board = next;
+      storageError = "";
+      return true;
+    } catch {
+      storageError =
+        "The example could not be kept in this tab. Export it before leaving.";
+      return false;
+    }
+  }
   if (teacherBoardRequest) {
     storageError =
       "This classroom draft must be saved to the teacher workspace. Your device board is unchanged.";
@@ -611,6 +637,48 @@ function render() {
   }
   if (!draft) header.append(fullscreen.createControls());
   shell.append(header);
+  if (teacherDemo) {
+    const demo = el("section", "teacher-demo-banner");
+    demo.setAttribute("aria-label", "Teacher example board");
+    demo.append(
+      el("strong", "", "Try your first board"),
+      el(
+        "p",
+        "",
+        "Tap a tile to hear it. Use Caregiver controls to change the words. This example stays in this tab and leaves your device board unchanged.",
+      ),
+      button(
+        draft
+          ? "Save changes and continue to teacher workspace"
+          : "Save to teacher workspace",
+        async () => {
+          if (arrangement) {
+            status("Save or cancel the arrangement before continuing.", true);
+            return;
+          }
+          if (persist(draft ?? board)) {
+            try {
+              sessionStorage.setItem(teacherDemoPendingKey, "1");
+            } catch {
+              storageError =
+                "This tab cannot keep the example for sign-in. Export your board before leaving.";
+              render();
+              return;
+            }
+            stop();
+            location.assign("/teacher?demo=1");
+          } else {
+            render();
+          }
+        },
+        "button primary",
+      ),
+    );
+    const back = el("a", "button quiet", "Back to teacher welcome");
+    back.href = "/teacher";
+    demo.append(back);
+    shell.append(demo);
+  }
   if (arrangement) {
     const session = arrangement;
     shell.append(
@@ -772,7 +840,9 @@ function renderEditor(shell: HTMLElement, working: Board) {
     saveState.textContent = hasUnsavedDraft()
       ? teacherEditing
         ? "Unsaved classroom draft changes"
-        : "Unsaved changes on this device"
+        : teacherDemo
+          ? "Unsaved example changes"
+          : "Unsaved changes on this device"
       : "No unsaved changes";
   };
   updateSaveState();
@@ -784,7 +854,9 @@ function renderEditor(shell: HTMLElement, working: Board) {
       "subtitle",
       teacherEditing
         ? "Changes stay in this draft until you save to the teacher workspace. Publish separately from the dashboard. The device board is unchanged."
-        : "Make this board work for the person using it. Save your changes when you’re ready to return to the board.",
+        : teacherDemo
+          ? "Change a few words to try the editor. Save board keeps this example in this tab. Save changes and continue to teacher workspace lets you keep it after sign-in."
+          : "Make this board work for the person using it. Save your changes when you’re ready to return to the board.",
     ),
   );
   const tools = el("div", "editor-toolbar");
@@ -828,7 +900,10 @@ function renderEditor(shell: HTMLElement, working: Board) {
         render();
         document.querySelector<HTMLButtonElement>(".caregiver-access")?.focus();
         status(
-          layoutSaveWarning || "Board saved on this device.",
+          layoutSaveWarning ||
+            (teacherDemo
+              ? "Example saved in this tab. Your device board is unchanged."
+              : "Board saved on this device."),
           Boolean(layoutSaveWarning),
         );
       } else {
@@ -900,7 +975,9 @@ function renderEditor(shell: HTMLElement, working: Board) {
     storageError ||
       (teacherEditing
         ? "Save classroom draft stores these changes in your teacher workspace. Publish separately to make a version available to linked devices."
-        : "Changes stay on this device until you choose to save an account copy. Export a backup to move your board."),
+        : teacherDemo
+          ? "This example stays in this tab. Export a copy before closing the tab or switching devices."
+          : "Changes stay on this device until you choose to save an account copy. Export a backup to move your board."),
   );
   notice.id = "status";
   notice.role = "status";
@@ -1018,7 +1095,7 @@ function renderEditor(shell: HTMLElement, working: Board) {
   displayGroup.append(display);
   voiceGroup.append(settings);
 
-  if (!teacherEditing)
+  if (!teacherEditing && !teacherDemo)
     backups.append(
       createAccountPanel({
         working,
@@ -1242,7 +1319,9 @@ function renderEditor(shell: HTMLElement, working: Board) {
       "",
       teacherEditing
         ? "Classroom drafts and published vocabulary are stored on the classroom server. Spoken messages are not collected. Learners keep their working boards on their own devices."
-        : "Your local board stays in this browser unless you choose to save a copy to your account. Clearing site data removes local words. Caregiver mode is an editing boundary, not a security lock.",
+        : teacherDemo
+          ? "This example uses separate tab storage. Your saved communication board is unchanged. Close the tab only after exporting or saving the example to your teacher workspace."
+          : "Your local board stays in this browser unless you choose to save a copy to your account. Clearing site data removes local words. Caregiver mode is an editing boundary, not a security lock.",
     ),
     button(
       "Reset to starter words",
@@ -1404,7 +1483,9 @@ function editTile(
       "editor-help",
       quick
         ? "Save adds this tile on this device and returns to the same board."
-        : "Then choose Save board to keep your changes on this browser.",
+        : teacherDemo
+          ? "Then choose Save board to keep this example in this tab."
+          : "Then choose Save board to keep your changes on this browser.",
     ),
     actions,
   );
@@ -1607,6 +1688,8 @@ if (teacherBoardRequest) {
       root.append(back);
     }
   })();
+} else if (teacherDemo) {
+  render();
 } else {
   classroomSync = createClassroomSync({
     storage: {
@@ -1653,7 +1736,24 @@ if (teacherBoardRequest) {
       }
     },
   });
+  if (teacherParameters.get("linkClassroom") === "1") {
+    // The URL opens setup only. Pairing still requires the code and the
+    // caregiver's explicit confirmation before any board can be transferred.
+    caregiverUnlocked = true;
+    draft = structuredClone(board);
+    expandedSettings.add("Backup and transfer");
+    const clean = new URL(location.href);
+    clean.searchParams.delete("linkClassroom");
+    history.replaceState(null, "", clean.pathname + clean.search + clean.hash);
+  }
   render();
+  if (draft && teacherParameters.get("linkClassroom") === "1") {
+    const code = root.querySelector<HTMLInputElement>(
+      ".account-panel input[autocomplete='off']",
+    );
+    code?.focus();
+    code?.scrollIntoView({ block: "center" });
+  }
 }
 
 function syncDescription() {
