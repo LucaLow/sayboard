@@ -1,6 +1,7 @@
 import type { Board } from "../src/board.js";
 import type { ClassroomStore } from "./classroom-contract.js";
 import type { OnboardingStore } from "./onboarding.js";
+import type { GoogleStore } from "./google-store.js";
 
 export type Account = {
   id: string;
@@ -14,6 +15,7 @@ export type SavedBoard = { board: Board; revision: number };
 export interface Store {
   readonly classrooms?: ClassroomStore;
   readonly onboarding?: OnboardingStore;
+  readonly google?: GoogleStore;
   account(username: string): Promise<Account | null>;
   session(hash: string, now: number): Promise<Session | null>;
   createSession(

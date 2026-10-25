@@ -16,6 +16,7 @@ import {
   createInvitationsPanel,
   showActivation,
 } from "./teacher-invitations";
+import { mountGoogleSignIn, googleSignInNotice } from "./google-signin";
 
 const root = document.querySelector<HTMLDivElement>("#teacher-app");
 if (!root) throw new Error("Missing teacher workspace");
@@ -337,6 +338,7 @@ function render() {
       ),
     );
     const login = el("form", "teacher-form");
+    if (!serviceDisabled) mountGoogleSignIn(card);
     const usernameLabel = el("label", "", "Teacher username");
     const username = el("input");
     username.autocomplete = "username";
@@ -788,6 +790,7 @@ window.addEventListener("hashchange", () => {
     location.reload();
 });
 const activation = new URLSearchParams(location.hash.slice(1)).get("activate");
+const googleNotice = googleSignInNotice();
 if (activation !== null) {
   history.replaceState(null, "", location.pathname);
   void showActivation(root, activation, (username) => {
@@ -807,7 +810,8 @@ if (activation !== null) {
     }
     const session = await accountClient.restoreSession();
     if (!session) {
-      notice = "Sign in to open your classrooms.";
+      notice = googleNotice ?? "Sign in to open your classrooms.";
+      errorNotice = googleNotice !== null;
       return;
     }
     rooms = await teacherClient.list();

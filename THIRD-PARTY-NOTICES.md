@@ -11,4 +11,6 @@ The combined frontend is GPL-3.0-or-later; original Sayboard modules additionall
 
 Archive manifests bind the pinned sources to the runtime versions. No source-delivery condition requires a GitHub account, payment, NDA or special password. Independent backend implementation and user data are outside these browser archives.
 
-The standalone server bundles PostgreSQL client libraries and Nodemailer. Nodemailer supplies optional SMTP email delivery under its MIT licence and is not included in the browser app. `npm run build:server` collects the full licences of bundled server dependencies into `server-dist/THIRD-PARTY-NOTICES.txt`, which ships in the runtime image.
+The standalone server bundles PostgreSQL client libraries, Nodemailer and JOSE. Nodemailer supplies optional SMTP email delivery, and JOSE verifies Google identity-token signatures, both under MIT licences. They are not included in the browser app. `npm run build:server` collects the full licences of bundled server dependencies into `server-dist/THIRD-PARTY-NOTICES.txt`, which ships in the runtime image.
+
+The Google G logo on the optional sign-in button is a Google trademark used to identify Sign in with Google, following [Google's branding guidance](https://developers.google.com/identity/branding-guidelines). The project's software licences do not grant rights to Google's trademarks. No Google scripts or fonts load in the browser.

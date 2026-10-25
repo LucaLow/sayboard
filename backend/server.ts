@@ -11,6 +11,7 @@ import { productionStoreFactory } from "./postgres-runtime.js";
 import { retainSources } from "./source-retention.js";
 import { sessionToken } from "./api-http.js";
 import { smtpMailer } from "./mail.js";
+import { googleConfig } from "./google.js";
 
 const json = (status: number, error: string) =>
   new Response(JSON.stringify({ error }), {
@@ -64,6 +65,8 @@ export async function startServer(env: NodeJS.ProcessEnv) {
     // Invalid optional email settings must stop startup, not turn every account request into a 503.
     smtpMailer(env);
   }
+  // Reject partial credentials and unsupported storage before accepting traffic.
+  googleConfig(env);
   const directory = await realpath(resolve(env.SAYBOARD_STATIC_DIR ?? "dist"));
   await readFile(resolve(directory, "index.html"));
   process.umask(0o077);

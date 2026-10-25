@@ -52,10 +52,12 @@ export function localServer(handler: Handler, origin?: string) {
           request,
           incoming.socket.remoteAddress ?? "",
         );
-        outgoing.writeHead(
-          response.status,
-          Object.fromEntries(response.headers),
-        );
+        outgoing.writeHead(response.status, {
+          ...Object.fromEntries(response.headers),
+          ...(response.headers.has("set-cookie")
+            ? { "set-cookie": response.headers.getSetCookie() }
+            : {}),
+        });
         if (response.body) {
           const reader = response.body.getReader();
           outgoing.once("close", () => {
