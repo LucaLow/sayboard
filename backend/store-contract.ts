@@ -28,5 +28,7 @@ export interface Store {
     board: Board,
     revision: number,
   ): Promise<SavedBoard | null>;
+  // Read-only preflight; allowLogin still atomically charges the attempt.
+  loginAvailable(key: string, now: number): Promise<boolean>;
   allowLogin(key: string, now: number): Promise<boolean>;
 }
