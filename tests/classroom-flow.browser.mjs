@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
+import { checkTeacherExampleSave } from "./teacher-example-save.browser.mjs";
 
 // Uses the actual app, authentication cookies, API and SQLite store. The caller
 // provides synthetic credentials from an isolated test installation.
@@ -875,7 +876,15 @@ export async function checkClassroomFlow({
       );
     }
     assert.deepEqual(errors, []);
+    const returningTeacher = await checkTeacherExampleSave({
+      browser,
+      origin,
+      username,
+      password,
+      engine,
+    });
     return {
+      ...returningTeacher,
       engine,
       teacherLogin: true,
       anonymousDemoKeepsExistingDeviceBoard: true,

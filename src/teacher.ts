@@ -116,8 +116,9 @@ function exampleForExistingClassroom() {
   const save = el("form", "teacher-form");
   const label = el("label", "", "Save in classroom");
   const select = el("select");
+  select.id = "teacher-example-classroom";
+  label.htmlFor = select.id;
   for (const value of rooms) select.append(new Option(value.name, value.id));
-  label.append(select);
   const alias = textField("example-learner", "Learner alias", "Learner A");
   const submit = el(
     "button",
@@ -125,7 +126,7 @@ function exampleForExistingClassroom() {
     "Save example as a new learner board",
   );
   submit.type = "submit";
-  save.append(label, alias.label, submit);
+  save.append(label, select, alias.label, submit);
   save.onsubmit = (event) => {
     event.preventDefault();
     const classroom = rooms.find((value) => value.id === select.value);
