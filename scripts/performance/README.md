@@ -2,7 +2,7 @@
 
 These tools compare production builds using synthetic boards. Generated results belong in ignored `test-results/performance`, not the source repository. The catalogue baseline under `tests/fixtures` is an intentional regression oracle.
 
-Build a baseline revision and a candidate revision into separate directories. Run both with the same machine, browser and scripts. Stop other build and browser jobs while measuring.
+Build a baseline revision and a candidate revision into separate directories. Run both with the same machine, browser and scripts. Stop other build and browser jobs while measuring. The browser script uses Playwright's Chromium from `npx playwright install chromium`; set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to use another Chromium executable.
 
 ```sh
 SAYBOARD_DIST=/absolute/path/to/baseline/dist node scripts/performance/browser.mjs test-results/performance/baseline.json

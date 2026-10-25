@@ -179,6 +179,10 @@ export function createSymbolPicker({
     refreshSelection();
   }
   search.oninput = renderResults;
+  // Results update while typing. Enter must not submit the surrounding tile form.
+  search.onkeydown = (event) => {
+    if (event.key === "Enter") event.preventDefault();
+  };
   kind.onchange = renderResults;
   updateSuggestions(text);
   renderResults();

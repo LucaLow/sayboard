@@ -9,6 +9,11 @@ type Handler = (request: Request, peer: string) => Promise<Response>;
 export function localServer(handler: Handler, origin?: string) {
   const server = createServer(
     async (incoming: IncomingMessage, outgoing: ServerResponse) => {
+      // After shutdown starts, close each keep-alive connection once its
+      // response is sent rather than holding it for keepAliveTimeout.
+      outgoing.once("finish", () => {
+        if (!server.listening) server.closeIdleConnections();
+      });
       try {
         const headers = new Headers();
         for (const [name, value] of Object.entries(incoming.headers)) {
@@ -47,10 +52,12 @@ export function localServer(handler: Handler, origin?: string) {
           request,
           incoming.socket.remoteAddress ?? "",
         );
-        outgoing.writeHead(
-          response.status,
-          Object.fromEntries(response.headers),
-        );
+        outgoing.writeHead(response.status, {
+          ...Object.fromEntries(response.headers),
+          ...(response.headers.has("set-cookie")
+            ? { "set-cookie": response.headers.getSetCookie() }
+            : {}),
+        });
         if (response.body) {
           const reader = response.body.getReader();
           outgoing.once("close", () => {
@@ -91,5 +98,10 @@ export function localServer(handler: Handler, origin?: string) {
   );
   server.requestTimeout = 15_000;
   server.headersTimeout = 10_000;
+  // Outlast the reverse proxy's idle upstream connections (Caddy: 2 minutes) so
+  // the proxy, not Node, closes them. Otherwise a request sent just as Node
+  // closes an idle socket fails, and Caddy answers a POST or PUT with 502.
+  // Idle sockets are not subject to headersTimeout or requestTimeout.
+  server.keepAliveTimeout = 130_000;
   return server;
 }

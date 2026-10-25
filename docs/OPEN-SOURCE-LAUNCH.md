@@ -39,4 +39,4 @@ Do not change the existing live website as an incidental part of publication. Ex
 
 ## Launch hosting separately
 
-Follow [SELF-HOSTING.md](SELF-HOSTING.md) for a VPS and operator-created accounts. Verify backup restoration, access controls, account recovery and data deletion before accepting real records. The current account copy is not a classroom service. Classroom permissions, device pairing and billing remain planned in [PROJECT.md](PROJECT.md). Decide pricing and personal-backup policy after a teacher pilot.
+Follow [SELF-HOSTING.md](SELF-HOSTING.md) for a VPS and operator-created accounts. Verify backup restoration, access controls, account recovery and data deletion before accepting real records. Classrooms and device pairing are implemented for the [teacher pilot](TEACHER-PILOT.md). Shared school organisations, delegated roles and billing remain planned in [PROJECT.md](PROJECT.md). Decide pricing and personal-backup policy after a teacher pilot.

@@ -131,6 +131,13 @@ export class SqliteOnboarding implements OnboardingStore {
       if (!row) throw new HttpError(410, "invitation_unavailable");
       let accountId: string;
       if (invitation.kind === "invite") {
+        // An operator can create the same account while the invitation is pending.
+        if (
+          this.db
+            .prepare("SELECT 1 FROM accounts WHERE username=?")
+            .get(invitation.username)
+        )
+          throw new HttpError(409, "username_taken");
         accountId = randomUUID();
         this.db
           .prepare(
