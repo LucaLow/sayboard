@@ -882,6 +882,7 @@ export async function checkClassroomFlow({
       username,
       password,
       engine,
+      artifactDirectory,
     });
     return {
       ...returningTeacher,

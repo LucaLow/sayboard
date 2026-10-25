@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { mkdir } from "node:fs/promises";
 
 // A returning teacher deliberately saves a tab-local example into an existing
 // classroom. Fixture records use the actual authenticated SQLite API.
@@ -8,6 +9,7 @@ export async function checkTeacherExampleSave({
   username,
   password,
   engine,
+  artifactDirectory,
 }) {
   const context = await browser.newContext({
     ignoreHTTPSErrors: new URL(origin).hostname === "localhost",
@@ -46,6 +48,46 @@ export async function checkTeacherExampleSave({
     const original = await profile.json();
     await page.goto(origin + "/?teacherDemo=1");
     await page.getByRole("button", { name: "Say Yes", exact: true }).waitFor();
+    await page
+      .getByRole("button", { name: "Switch to dark mode", exact: true })
+      .click();
+    const contrast = await page
+      .locator(".teacher-demo-banner")
+      .evaluate((banner) => {
+        const luminance = (color) => {
+          const channels = color
+            .match(/[0-9.]+/g)
+            .slice(0, 3)
+            .map(Number)
+            .map((channel) => {
+              const value = channel / 255;
+              return value <= 0.04045
+                ? value / 12.92
+                : ((value + 0.055) / 1.055) ** 2.4;
+            });
+          return (
+            channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722
+          );
+        };
+        const style = getComputedStyle(banner);
+        const text = luminance(style.color);
+        const background = luminance(style.backgroundColor);
+        return (
+          (Math.max(text, background) + 0.05) /
+          (Math.min(text, background) + 0.05)
+        );
+      });
+    assert.ok(contrast >= 4.5, "The dark example banner remains readable");
+    if (artifactDirectory) {
+      await mkdir(artifactDirectory, { recursive: true });
+      await page.screenshot({
+        path: artifactDirectory + `/teacher-demo-dark-${engine}.png`,
+        fullPage: true,
+      });
+    }
+    await page
+      .getByRole("button", { name: "Switch to light mode", exact: true })
+      .click();
     await page
       .getByRole("button", { name: "Save to teacher workspace", exact: true })
       .click();
@@ -106,6 +148,7 @@ export async function checkTeacherExampleSave({
       existingClassroomExampleSavedExplicitly: true,
       existingLearnerUnchanged: true,
       signOutClearsPendingExample: true,
+      darkExampleBannerContrast: contrast,
     };
   } finally {
     if (classroomId) {

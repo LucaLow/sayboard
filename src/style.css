@@ -574,9 +574,10 @@ output {
 .teacher-demo-banner {
   padding: 18px 22px;
   margin: 0 0 20px;
-  border: 1px solid var(--border, #91a58a);
+  border: 1px solid #91a58a;
   border-radius: 14px;
-  background: var(--surface, #e8efdf);
+  background: #e8efdf;
+  color: #193d35;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -592,4 +593,9 @@ output {
 }
 .teacher-demo-banner a {
   text-decoration: none;
+}
+[data-theme="dark"] .teacher-demo-banner {
+  background: #20352c;
+  color: #edf4e9;
+  border-color: #4b6555;
 }
