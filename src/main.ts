@@ -1,3 +1,4 @@
+import { createTeacherWorkspace } from "./teacher-workspace";
 import { createElement as el, createButton as button } from "./dom";
 import { createBoardArranger, type ArrangementSession } from "./board-arranger";
 import "./board-arranger.css";
@@ -10,11 +11,20 @@ import { createAccountPanel } from "./account-panel";
 import { createClassroomPanel } from "./classroom-panel";
 import { createClassroomSync, type SyncState } from "./classroom-sync";
 import { teacherClient } from "./classroom-client";
+import {
+  readTeacherDemo,
+  saveTeacherDemo,
+  teacherDemoPendingKey,
+} from "./teacher-demo";
 import { accountClient } from "./account";
-import { id, type ProfileDetail } from "./classroom-contract";
+import {
+  id,
+  type ProfileDetail,
+  type ClassroomDetail,
+} from "./classroom-contract";
 import { createSymbolPicker } from "./symbol-picker";
 import { placeTile, isTileSize } from "./layout";
-import { loadTheme, applyTheme } from "./theme";
+import { createThemeToggle } from "./theme-toggle";
 import { createLocalSpeech } from "./speech/local-speech";
 import { createCategoryNavigation } from "./category-navigation";
 import {
@@ -24,6 +34,7 @@ import {
   serializeBoard,
 } from "./board-storage";
 import { hasBoardChanges } from "./editor-state";
+import { createBoardTabSync } from "./board-tab-sync";
 import { columnsKey } from "./device-layout";
 import {
   deviceLayoutKey,
@@ -57,8 +68,14 @@ const root = document.querySelector<HTMLDivElement>("#app");
 if (!root) throw new Error("Missing app root");
 const teacherParameters = new URLSearchParams(location.search);
 const teacherBoardRequest = teacherParameters.get("teacherBoard");
+const teacherDemo =
+  teacherParameters.get("teacherDemo") === "1" && !teacherBoardRequest;
 let teacherEditing: ProfileDetail | null = null;
 let teacherSaving = false;
+let teacherClassroom: ClassroomDetail | null = null;
+let teacherPreviewing = false;
+let teacherNotice = "";
+let teacherNoticeError = false;
 function teacherDashboard() {
   const classroom = teacherParameters.get("classroom");
   return (
@@ -76,8 +93,14 @@ let hasStoredBoard = false;
 let storedBoardValue: string | null = null;
 let replacementAuthorizedDraft: Board | null = null;
 try {
-  storedBoardValue = localStorage.getItem(currentBoardKey);
-  const loaded = loadStoredBoard(localStorage);
+  if (!teacherDemo) storedBoardValue = localStorage.getItem(currentBoardKey);
+  const loaded: ReturnType<typeof loadStoredBoard> = teacherDemo
+    ? {
+        kind: "loaded",
+        board: readTeacherDemo(sessionStorage) ?? starterBoard(),
+        migrated: false,
+      }
+    : loadStoredBoard(localStorage);
   if (loaded.kind === "loaded") {
     board = loaded.board;
     hasStoredBoard = true;
@@ -91,8 +114,6 @@ try {
   storageBlocked = true;
 }
 let activeBoardId: string | null = null;
-let theme = loadTheme();
-document.documentElement.dataset.theme = theme;
 let draft: Board | null = null;
 let caregiverUnlocked = false;
 const expandedSettings = new Set<string>();
@@ -110,7 +131,8 @@ try {
     window.innerWidth,
     board.size,
   );
-  localStorage.setItem(deviceLayoutKey, JSON.stringify(deviceLayout));
+  if (!teacherDemo)
+    localStorage.setItem(deviceLayoutKey, JSON.stringify(deviceLayout));
 } catch {
   // Restricted storage keeps this layout stable for the current session.
 }
@@ -161,10 +183,11 @@ const supported =
   "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
 function hasUnsavedDraft(): boolean {
   return (
-    draft !== null &&
-    (hasBoardChanges(board, draft) ||
-      hasDeviceLayoutChanges(deviceLayout, draftDeviceLayout) ||
-      (storageBlocked && replacementAuthorizedDraft === draft))
+    (arrangement !== null && hasBoardChanges(board, arrangement.board)) ||
+    (draft !== null &&
+      (hasBoardChanges(board, draft) ||
+        hasDeviceLayoutChanges(deviceLayout, draftDeviceLayout) ||
+        (storageBlocked && replacementAuthorizedDraft === draft)))
   );
 }
 window.addEventListener("beforeunload", (event) => {
@@ -197,6 +220,18 @@ async function confirmChange(message: string): Promise<boolean> {
   });
 }
 function status(text: string, error = false) {
+  if (teacherEditing && error) {
+    teacherNotice = text;
+    teacherNoticeError = true;
+    const feedback = document.querySelector<HTMLElement>(
+      ".teacher-board-feedback",
+    );
+    if (feedback) {
+      feedback.textContent = text;
+      feedback.classList.add("error");
+    }
+  }
+
   const node = document.querySelector<HTMLElement>("#status");
   if (node) {
     node.textContent = text;
@@ -284,6 +319,18 @@ function speakText(phrase: string, id: string | null, settings: Board = board) {
   });
 }
 function persist(next: Board) {
+  if (teacherDemo) {
+    try {
+      saveTeacherDemo(sessionStorage, next);
+      board = next;
+      storageError = "";
+      return true;
+    } catch {
+      storageError =
+        "The example could not be kept in this tab. Export it before leaving.";
+      return false;
+    }
+  }
   if (teacherBoardRequest) {
     storageError =
       "This classroom draft must be saved to the teacher workspace. Your device board is unchanged.";
@@ -303,6 +350,7 @@ function persist(next: Board) {
       return false;
     }
     storedBoardValue = saveStoredBoard(localStorage, next);
+    boardTabSync.cancel();
     board = next;
     storageError = "";
     storageBlocked = false;
@@ -324,25 +372,36 @@ function persist(next: Board) {
     return false;
   }
 }
-// Follow saves from other tabs. Open edits keep their base and persist refuses them.
+// Both server publications and cross-tab saves wait for the same communication
+// boundary. In particular, rendering must not replace an active typing input.
+function communicationIdle() {
+  return (
+    draft === null &&
+    arrangement === null &&
+    selected === null &&
+    !typedMessagePending &&
+    heldPointers.size === 0 &&
+    Date.now() - lastInteraction >= 2000 &&
+    !document.querySelector("dialog[open]")
+  );
+}
+const boardTabSync = createBoardTabSync({
+  storage: { getItem: (key) => localStorage.getItem(key) },
+  currentValue: () => storedBoardValue,
+  canApply: communicationIdle,
+  apply: (latest, value) => {
+    board = latest;
+    storedBoardValue = value;
+    hasStoredBoard = true;
+    storageError = "";
+    storageBlocked = false;
+    render();
+  },
+});
+// Open edits retain their base; persist refuses stale drafts rather than losing
+// either tab's work. Deferred updates are checked again after edits are closed.
 window.addEventListener("storage", (event) => {
-  if (
-    event.key !== currentBoardKey ||
-    event.newValue === null ||
-    teacherBoardRequest ||
-    draft ||
-    arrangement
-  )
-    return;
-  try {
-    board = parseBoard(JSON.parse(event.newValue));
-  } catch {
-    return;
-  }
-  storedBoardValue = event.newValue;
-  storageError = "";
-  storageBlocked = false;
-  render();
+  if (!teacherBoardRequest && !teacherDemo) boardTabSync.changed(event);
 });
 function exportBoard(value: Board) {
   try {
@@ -519,7 +578,7 @@ function render() {
         )
           .find((node) => node.dataset.arrangeTileId === categoryTileId)
           ?.focus();
-      } else if (draft) {
+      } else if (draft && !teacherPreviewing) {
         Array.from(
           document.querySelectorAll<HTMLButtonElement>("[data-category-id]"),
         )
@@ -536,33 +595,9 @@ function render() {
   brand.append(renderSymbol("message-circle"), el("span", "", "sayboard"));
   const controls = el("div", "header-controls");
   controls.dataset.fullscreenChrome = "";
-  const themeFeedback = el("span", "sr-only");
-  themeFeedback.role = "status";
-  themeFeedback.setAttribute("aria-live", "polite");
-  const themeButton = button(
-    "",
-    () => {
-      theme = theme === "light" ? "dark" : "light";
-      const saved = applyTheme(theme);
-      updateThemeButton();
-      themeFeedback.textContent = saved
-        ? `${theme === "dark" ? "Dark" : "Light"} mode on.`
-        : `${theme === "dark" ? "Dark" : "Light"} mode on for this session. Device storage is unavailable.`;
-    },
-    "button quiet icon-button",
-  );
-  function updateThemeButton() {
-    const label =
-      theme === "light" ? "Switch to dark mode" : "Switch to light mode";
-    themeButton.setAttribute("aria-label", label);
-    themeButton.title = label;
-    themeButton.replaceChildren(
-      renderSymbol(theme === "light" ? "moon" : "sun"),
-    );
-  }
-  updateThemeButton();
+  const themeButton = createThemeToggle();
   const caregiver = button(
-    teacherEditing ? "Teacher dashboard" : draft ? "Back to board" : "",
+    teacherEditing ? "Done editing" : draft ? "Back to board" : "",
     async () => {
       if (teacherEditing) {
         if (
@@ -601,7 +636,7 @@ function render() {
     caregiver.title = "Caregiver controls";
   }
   caregiver.disabled = arrangement !== null;
-  controls.append(themeButton, caregiver, themeFeedback);
+  controls.append(themeButton, caregiver);
   if (!draft && !teacherEditing) {
     const destination =
       board.tiles.find(
@@ -640,6 +675,48 @@ function render() {
   }
   if (!draft) header.append(fullscreen.createControls());
   shell.append(header);
+  if (teacherDemo) {
+    const demo = el("section", "teacher-demo-banner");
+    demo.setAttribute("aria-label", "Teacher example board");
+    demo.append(
+      el("strong", "", "Try your first board"),
+      el(
+        "p",
+        "",
+        "Tap a tile to hear it. Use Caregiver controls to change the words. This example stays in this tab and leaves your device board unchanged.",
+      ),
+      button(
+        draft
+          ? "Save changes and continue to teacher workspace"
+          : "Save to teacher workspace",
+        async () => {
+          if (arrangement) {
+            status("Save or cancel the arrangement before continuing.", true);
+            return;
+          }
+          if (persist(draft ?? board)) {
+            try {
+              sessionStorage.setItem(teacherDemoPendingKey, "1");
+            } catch {
+              storageError =
+                "This tab cannot keep the example for sign-in. Export your board before leaving.";
+              render();
+              return;
+            }
+            stop();
+            location.assign("/teacher?demo=1");
+          } else {
+            render();
+          }
+        },
+        "button primary",
+      ),
+    );
+    const back = el("a", "button quiet", "Back to teacher welcome");
+    back.href = "/teacher";
+    demo.append(back);
+    shell.append(demo);
+  }
   if (arrangement) {
     const session = arrangement;
     shell.append(
@@ -656,14 +733,19 @@ function render() {
           document.querySelector<HTMLButtonElement>(".tile")?.focus();
           return null;
         },
-        onCancel: () => {
+        onCancel: async () => {
+          if (
+            hasUnsavedDraft() &&
+            !(await confirmChange("Discard unsaved arrangement changes?"))
+          )
+            return;
           arrangement = null;
           render();
           document.querySelector<HTMLButtonElement>(".tile")?.focus();
         },
       }),
     );
-  } else if (draft) {
+  } else if (draft && !teacherPreviewing) {
     renderEditor(shell, draft);
   } else {
     shell.append(el("h1", "sr-only", "Communication board"));
@@ -678,7 +760,7 @@ function render() {
     live.setAttribute("aria-live", "polite");
     shell.append(live);
     const syncIndicator = el("p", "classroom-sync-status", syncDescription());
-    syncIndicator.hidden = classroomSyncState.kind === "unlinked";
+    syncIndicator.dataset.sync = classroomSyncState.kind;
     syncIndicator.dataset.fullscreenChrome = "";
     shell.append(syncIndicator);
 
@@ -697,7 +779,7 @@ function render() {
         emptyCaregiver,
       );
       shell.append(empty, typeAndSpeak());
-      root.append(shell);
+      root.append(teacherEditing ? wrapTeacherBoard(shell, navigation) : shell);
       fullscreen.refresh();
       return;
     }
@@ -746,7 +828,7 @@ function render() {
     viewport.append(grid);
     shell.append(viewport, typeAndSpeak());
   }
-  root.append(shell);
+  root.append(teacherEditing ? wrapTeacherBoard(shell, navigation) : shell);
   fullscreen.refresh();
   if (teacherSaving)
     root
@@ -755,6 +837,169 @@ function render() {
       >("input,button,select")
       .forEach((control) => (control.disabled = true));
 }
+async function saveTeacherDraft(working: Board) {
+  if (!teacherEditing || teacherSaving) return;
+  teacherSaving = true;
+  const scrollPosition = window.scrollY;
+  render();
+  try {
+    const saved = await teacherClient.save(
+      teacherEditing.id,
+      teacherEditing.revision,
+      structuredClone(working),
+    );
+    teacherEditing = saved;
+    board = structuredClone(saved.board);
+    draft = structuredClone(saved.board);
+    teacherNotice = "Classroom draft saved. Publish when you are ready.";
+    teacherNoticeError = false;
+  } catch (error) {
+    teacherNoticeError = true;
+    teacherNotice =
+      error instanceof Error
+        ? error.message
+        : "The draft could not be saved. Try again or export a copy.";
+  } finally {
+    teacherSaving = false;
+    render();
+    document
+      .querySelector<HTMLButtonElement>(".workspace-save")
+      ?.focus({ preventScroll: true });
+    window.scrollTo({ top: scrollPosition, behavior: "instant" });
+  }
+}
+async function publishTeacherDraft() {
+  if (!teacherEditing || teacherSaving || hasUnsavedDraft()) return;
+  if (
+    !(await confirmChange(
+      `Publish the saved draft for ${teacherEditing.label}? Linked devices update when communication is idle.`,
+    ))
+  )
+    return;
+  teacherSaving = true;
+  const scrollPosition = window.scrollY;
+  render();
+  try {
+    teacherEditing = await teacherClient.publish(
+      teacherEditing.id,
+      teacherEditing.revision,
+    );
+    teacherNotice = `Version ${teacherEditing.publishedVersion} published. Linked devices update automatically.`;
+    teacherNoticeError = false;
+  } catch (error) {
+    teacherNoticeError = true;
+    teacherNotice =
+      error instanceof Error
+        ? error.message
+        : "The saved draft could not be published.";
+  } finally {
+    teacherSaving = false;
+    render();
+    document
+      .querySelector<HTMLButtonElement>(".workspace-publish")
+      ?.focus({ preventScroll: true });
+    window.scrollTo({ top: scrollPosition, behavior: "instant" });
+  }
+}
+function wrapTeacherBoard(
+  shell: HTMLElement,
+  categoryNavigation: HTMLElement,
+): HTMLElement {
+  if (!teacherEditing || !teacherClassroom) return shell;
+  shell.querySelector(":scope > .subtitle")?.remove();
+  const editorNotice = shell.querySelector<HTMLElement>(
+    ":scope > #status.notice",
+  );
+  if (editorNotice) {
+    editorNotice.className = "sr-only";
+    editorNotice.textContent = "";
+  }
+  const oldHeader = shell.querySelector(".header");
+  const done = oldHeader?.querySelector<HTMLButtonElement>(".caregiver-access");
+  oldHeader?.remove();
+  const home = categoryNavigation.querySelector("button");
+  if (home) {
+    home.textContent = "Home board";
+    home.setAttribute("aria-label", "Home board");
+    home.title = "Home board";
+  }
+  shell.prepend(categoryNavigation);
+  const feedback = el("p", "teacher-board-feedback");
+  feedback.role = "status";
+  feedback.setAttribute("aria-live", "polite");
+  const preview = button("Preview board", () => {
+    stop();
+    teacherPreviewing = !teacherPreviewing;
+    render();
+  });
+  preview.setAttribute("aria-pressed", String(teacherPreviewing));
+  const save = button(
+    "Save draft",
+    () => void saveTeacherDraft(draft ?? board),
+    "button workspace-save",
+  );
+  const publish = button(
+    "Publish",
+    () => void publishTeacherDraft(),
+    "button primary workspace-publish",
+  );
+  function updateActions() {
+    const dirty = hasUnsavedDraft();
+    feedback.textContent = teacherSaving
+      ? "Saving classroom changes…"
+      : teacherNoticeError
+        ? teacherNotice
+        : dirty
+          ? "Unsaved changes. Save the draft before publishing."
+          : teacherNotice || "Draft saved";
+    feedback.classList.toggle("error", teacherNoticeError);
+    publish.disabled = dirty || teacherSaving;
+    save.disabled = teacherSaving;
+  }
+  updateActions();
+  shell.addEventListener("input", updateActions);
+  shell.addEventListener("change", updateActions);
+  const workspace = createTeacherWorkspace({
+    content: shell,
+    room: teacherClassroom,
+    profile: teacherEditing,
+    section: "board",
+    actions: [preview, save, publish],
+    contextAction: done ?? undefined,
+    feedback,
+    title: teacherEditing.label,
+  });
+  if (done) done.className = "button quiet";
+  const signOut = button(
+    "Sign out",
+    () =>
+      void (async () => {
+        if (
+          hasUnsavedDraft() &&
+          !(await confirmChange(
+            "Discard unsaved classroom changes and sign out?",
+          ))
+        )
+          return;
+        try {
+          await accountClient.logout();
+          stop();
+          draft = null;
+          location.assign("/teacher");
+        } catch (error) {
+          teacherNoticeError = true;
+          teacherNotice =
+            error instanceof Error
+              ? error.message
+              : "Sign out failed. Your draft is still open.";
+          render();
+        }
+      })(),
+  );
+  workspace.querySelector(".workspace-global")?.append(signOut);
+  return workspace;
+}
+
 function typeAndSpeak() {
   return createTypeAndSpeak({
     text: typedText,
@@ -796,7 +1041,9 @@ function renderEditor(shell: HTMLElement, working: Board) {
     saveState.textContent = hasUnsavedDraft()
       ? teacherEditing
         ? "Unsaved classroom draft changes"
-        : "Unsaved changes on this device"
+        : teacherDemo
+          ? "Unsaved example changes"
+          : "Unsaved changes on this device"
       : "No unsaved changes";
   };
   updateSaveState();
@@ -807,43 +1054,19 @@ function renderEditor(shell: HTMLElement, working: Board) {
       "p",
       "subtitle",
       teacherEditing
-        ? "Changes stay in this draft until you save to the teacher workspace. Publish separately from the dashboard. The device board is unchanged."
-        : "Make this board work for the person using it. Save your changes when you’re ready to return to the board.",
+        ? "Save to keep your classroom draft changes. Publish when you are ready to update linked devices."
+        : teacherDemo
+          ? "Change a few words to try the editor. Save board keeps this example in this tab. Save changes and continue to teacher workspace lets you keep it after sign-in."
+          : "Make this board work for the person using it. Save your changes when you’re ready to return to the board.",
     ),
   );
   const tools = el("div", "editor-toolbar");
   const saveTools = el("div", "editor-toolbar editor-save-tools");
   const saveBoardButton = button(
-    teacherEditing ? "Save classroom draft" : "Save board",
+    teacherEditing ? "Save draft" : "Save board",
     async () => {
       if (teacherEditing) {
-        if (teacherSaving) return;
-        teacherSaving = true;
-        document
-          .querySelectorAll<
-            HTMLInputElement | HTMLButtonElement | HTMLSelectElement
-          >("#app input, #app button, #app select")
-          .forEach((control) => (control.disabled = true));
-        try {
-          const saved = await teacherClient.save(
-            teacherEditing.id,
-            teacherEditing.revision,
-            structuredClone(working),
-          );
-          teacherEditing = saved;
-          board = saved.board;
-          draft = null;
-          location.assign(teacherDashboard());
-        } catch (error) {
-          teacherSaving = false;
-          render();
-          status(
-            error instanceof Error
-              ? error.message
-              : "The classroom draft could not be saved. Export it before leaving.",
-            true,
-          );
-        }
+        await saveTeacherDraft(working);
         return;
       }
       if (persist(working)) {
@@ -852,7 +1075,10 @@ function renderEditor(shell: HTMLElement, working: Board) {
         render();
         document.querySelector<HTMLButtonElement>(".caregiver-access")?.focus();
         status(
-          layoutSaveWarning || "Board saved on this device.",
+          layoutSaveWarning ||
+            (teacherDemo
+              ? "Example saved in this tab. Your device board is unchanged."
+              : "Board saved on this device."),
           Boolean(layoutSaveWarning),
         );
       } else {
@@ -923,8 +1149,10 @@ function renderEditor(shell: HTMLElement, working: Board) {
     "notice",
     storageError ||
       (teacherEditing
-        ? "Save classroom draft stores these changes in your teacher workspace. Publish separately to make a version available to linked devices."
-        : "Changes stay on this device until you choose to save an account copy. Export a backup to move your board."),
+        ? "Save draft stores your classroom changes. Publish makes the saved version available to linked devices."
+        : teacherDemo
+          ? "This example stays in this tab. Export a copy before closing the tab or switching devices."
+          : "Changes stay on this device until you choose to save an account copy. Export a backup to move your board."),
   );
   notice.id = "status";
   notice.role = "status";
@@ -975,7 +1203,7 @@ function renderEditor(shell: HTMLElement, working: Board) {
   voices.forEach((v) =>
     select.append(
       new Option(
-        `${v.name} · ${v.lang}${v.localService ? " · on device" : " · may use network"}`,
+        `${v.name} (${v.lang}, ${v.localService ? "on device" : "may use network"})`,
         v.voiceURI,
       ),
     ),
@@ -1042,7 +1270,7 @@ function renderEditor(shell: HTMLElement, working: Board) {
   displayGroup.append(display);
   voiceGroup.append(settings);
 
-  if (!teacherEditing)
+  if (!teacherEditing && !teacherDemo)
     backups.append(
       createAccountPanel({
         working,
@@ -1076,7 +1304,6 @@ function renderEditor(shell: HTMLElement, working: Board) {
   const workspace = el("div", "editor-workspace-layout");
   const navigation = el("nav", "editor-section-nav");
   navigation.setAttribute("aria-label", "Board editor sections");
-  navigation.append(el("p", "eyebrow", "MAKE IT YOURS"));
   const content = el("div", "editor-workspace-content");
   const words = el("section", "editor-words-section");
   words.id = "editor-words";
@@ -1266,7 +1493,9 @@ function renderEditor(shell: HTMLElement, working: Board) {
       "",
       teacherEditing
         ? "Classroom drafts and published vocabulary are stored on the classroom server. Spoken messages are not collected. Learners keep their working boards on their own devices."
-        : "Your local board stays in this browser unless you choose to save a copy to your account. Clearing site data removes local words. Caregiver mode is an editing boundary, not a security lock.",
+        : teacherDemo
+          ? "This example uses separate tab storage. Your saved communication board is unchanged. Close the tab only after exporting or saving the example to your teacher workspace."
+          : "Your local board stays in this browser unless you choose to save a copy to your account. Clearing site data removes local words. Caregiver mode is an editing boundary, not a security lock.",
     ),
     button(
       "Reset to starter words",
@@ -1370,7 +1599,7 @@ function editTile(
   for (let slot = 0; slot < 60; slot++) {
     const occupant = page.tiles[slot];
     const option = new Option(
-      `Slot ${slot + 1}${occupant ? ` · ${occupant.label}${occupant.id === editingId ? " (current)" : " (occupied)"}` : " · empty"}`,
+      `Slot ${slot + 1}: ${occupant ? `${occupant.label}${occupant.id === editingId ? " (current)" : " (occupied)"}` : "empty"}`,
       String(slot),
     );
     option.disabled = Boolean(occupant && occupant.id !== editingId);
@@ -1428,7 +1657,9 @@ function editTile(
       "editor-help",
       quick
         ? "Save adds this tile on this device and returns to the same board."
-        : "Then choose Save board to keep your changes on this browser.",
+        : teacherDemo
+          ? "Then choose Save board to keep this example in this tab."
+          : "Then choose Save board to keep your changes on this browser.",
     ),
     actions,
   );
@@ -1580,7 +1811,7 @@ if (supported) {
         voices.forEach((v) =>
           select.append(
             new Option(
-              `${v.name} · ${v.lang}${v.localService ? " · on device" : " · may use network"}`,
+              `${v.name} (${v.lang}, ${v.localService ? "on device" : "may use network"})`,
               v.voiceURI,
             ),
           ),
@@ -1608,10 +1839,17 @@ if (teacherBoardRequest) {
         throw new Error("Sign in to the teacher workspace to open this board.");
       teacherEditing = await teacherClient.profile(profileId);
       board = structuredClone(teacherEditing.board);
-      draft =
-        teacherParameters.get("preview") === "1"
-          ? null
-          : structuredClone(board);
+      const classroomId = teacherParameters.get("classroom");
+      if (classroomId)
+        teacherClassroom = await teacherClient.classroom(id(classroomId));
+      if (
+        !teacherClassroom?.profiles.some(
+          (value) => value.id === teacherEditing?.id,
+        )
+      )
+        throw new Error("Open this learner from their classroom workspace.");
+      teacherPreviewing = teacherParameters.get("preview") === "1";
+      draft = structuredClone(board);
       storageError = "";
       storageBlocked = false;
       activeBoardId = null;
@@ -1631,6 +1869,8 @@ if (teacherBoardRequest) {
       root.append(back);
     }
   })();
+} else if (teacherDemo) {
+  render();
 } else {
   classroomSync = createClassroomSync({
     storage: {
@@ -1642,19 +1882,12 @@ if (teacherBoardRequest) {
     serverHint: document.cookie
       .split(";")
       .some((value) => value.trim() === "sayboard_classroom=1"),
-    canApply: () =>
-      !storageBlocked &&
-      draft === null &&
-      arrangement === null &&
-      selected === null &&
-      !typedMessagePending &&
-      heldPointers.size === 0 &&
-      Date.now() - lastInteraction >= 2000 &&
-      !document.querySelector("dialog[open]"),
+    canApply: () => !storageBlocked && communicationIdle(),
     apply: (publication) => {
       if (!publication.board) return false;
       try {
         storedBoardValue = saveStoredBoard(localStorage, publication.board);
+        boardTabSync.cancel();
         board = structuredClone(publication.board);
         hasStoredBoard = true;
         storageError = "";
@@ -1671,24 +1904,41 @@ if (teacherBoardRequest) {
         ".classroom-sync-status",
       );
       if (indicator) {
-        indicator.hidden = state.kind === "unlinked";
+        // Fullscreen owns `hidden` on chrome; polls must not reveal it.
+        indicator.dataset.sync = state.kind;
         indicator.textContent = syncDescription();
       }
     },
   });
+  if (teacherParameters.get("linkClassroom") === "1") {
+    // The URL opens setup only. Pairing still requires the code and the
+    // caregiver's explicit confirmation before any board can be transferred.
+    caregiverUnlocked = true;
+    draft = structuredClone(board);
+    expandedSettings.add("Backup and transfer");
+    const clean = new URL(location.href);
+    clean.searchParams.delete("linkClassroom");
+    history.replaceState(null, "", clean.pathname + clean.search + clean.hash);
+  }
   render();
+  if (draft && teacherParameters.get("linkClassroom") === "1") {
+    const code = root.querySelector<HTMLInputElement>(
+      ".account-panel input[autocomplete='off']",
+    );
+    code?.focus();
+    code?.scrollIntoView({ block: "center" });
+  }
 }
 
 function syncDescription() {
   const state = classroomSyncState;
   if (state.kind !== "linked") return "";
-  if (state.status === "offline")
-    return "Classroom offline · using saved board";
+  if (state.status === "offline") return "Classroom offline. Using saved board";
   if (state.status === "storage-error")
-    return "Update could not be saved · current board kept";
+    return "Update could not be saved. Current board kept";
   if (state.status === "waiting" && state.publishedVersion)
-    return `Classroom update ready · waiting for a pause`;
+    return `Classroom update ready. Waiting for a pause`;
   return state.version
-    ? `Classroom version ${state.version} · automatic updates`
-    : "Classroom connected · automatic updates";
+    ? `Classroom version ${state.version}. Automatic updates`
+    : "Classroom connected. Automatic updates";
 }

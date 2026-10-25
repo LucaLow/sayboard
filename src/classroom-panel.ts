@@ -17,9 +17,11 @@ export function createClassroomPanel({
   notice.role = "status";
   section.append(el("h2", "", "Classroom board"), content, notice);
   let busy = false;
+  let failed = false;
   async function perform(run: () => Promise<void>) {
     if (busy) return;
     busy = true;
+    failed = false;
     setPending(true);
     section
       .querySelectorAll<HTMLInputElement | HTMLButtonElement>("input,button")
@@ -27,6 +29,7 @@ export function createClassroomPanel({
     try {
       await run();
     } catch (error) {
+      failed = true;
       notice.textContent =
         error instanceof Error
           ? error.message
@@ -37,7 +40,9 @@ export function createClassroomPanel({
       if (section.isConnected) render(sync.state());
     }
   }
+  let shown = "";
   function render(state: SyncState) {
+    shown = JSON.stringify(state);
     content.replaceChildren();
     if (state.kind === "unlinked") {
       content.append(
@@ -93,7 +98,8 @@ export function createClassroomPanel({
         "storage-error":
           "This browser could not save the update. Its current board is kept. Free some browser storage; Sayboard will try again automatically.",
       };
-      notice.textContent = messages[state.status];
+      // Keep a failed action's message until the next attempt.
+      if (!failed) notice.textContent = messages[state.status];
       content.append(
         button(
           "Disconnect classroom device",
@@ -129,7 +135,9 @@ export function createClassroomPanel({
         .forEach((control) => (control.disabled = true));
   }
   const dispose = sync.subscribe((state) => {
-    if (section.isConnected && !busy) render(state);
+    // Every poll republishes; replacing unchanged controls would drop focus.
+    if (section.isConnected && !busy && JSON.stringify(state) !== shown)
+      render(state);
   });
   render(sync.state());
   return { element: section, dispose };
