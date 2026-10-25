@@ -93,6 +93,7 @@ export async function checkTeacherExampleSave({
       .getByRole("heading", { name: "Keep the board you tried", exact: true })
       .waitFor();
     await page.getByRole("button", { name: "Sign out", exact: true }).click();
+    await page.getByText("Signed out.", { exact: true }).waitFor();
     await page.getByLabel("Teacher username", { exact: true }).waitFor();
     assert.equal(
       await page.evaluate(() =>
