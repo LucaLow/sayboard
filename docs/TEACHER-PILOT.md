@@ -10,11 +10,11 @@ Choose **Save to teacher workspace** when the example is worth keeping. In the e
 
 ## First classroom
 
-1. Open your organiser's private invitation, choose a password of at least 16 characters, and sign in with the username shown. Invitations work once and expire after 48 hours. Existing operator-created accounts can sign in directly. There is no public signup, student email or student password.
+1. If Google sign-in is offered, choose **Continue with Google**. Otherwise open your organiser's private invitation, choose a password of at least 16 characters, and sign in with the username shown. Invitations work once and expire after 48 hours. Existing password accounts can sign in directly. Learners need no email address or password.
 2. On an empty workspace, enter a classroom name and learner alias such as `Learner A`, then choose **Create first board**. This creates both together and opens the board workspace. If you came from the example, the form explains that this saves it as a private draft on the server. Start with demonstration vocabulary. Returning teachers can create additional classrooms and add profiles separately.
 3. Choose **Edit board**. The existing board editor supports tiles, categories, import and export. **Save classroom draft** stores the draft on the server.
 4. Choose **Preview board** to try the actual communication view. Return to the dashboard and **Publish saved draft** when it is ready.
-5. Enter a device name and create a pairing code. The code expires after 10 minutes and works once. Creating another code replaces the previous unused code for that profile.
+5. Choose **Connect learner device**, enter a device name, and create a pairing code. The code expires after 10 minutes and works once. Creating another code replaces the previous unused code for that profile.
 6. On the intended device, open the address shown in the dashboard, ending in `/?linkClassroom=1`. It opens the existing connection screen and focuses the code field. The link contains no code, credentials or learner information and does not link the device by itself.
 7. Under **Classroom board**, enter the pairing code and choose **Link classroom device**. Confirm the initial connection, then choose **Back to board**. This authorises the teacher's publications to replace this device's saved board automatically. The usual caregiver controls and **Backup and transfer** path remains available.
 
@@ -22,7 +22,7 @@ After pairing, leave the learner's device on its communication board. Edit and *
 
 The device waits until speech, typing and caregiver editing have finished before applying a complete, validated publication. It saves that version locally before reporting receipt. If a download or save fails, the previous saved board remains available and the device retries. A device that reconnects catches up with the latest publication.
 
-The dashboard's **Classroom devices** section refreshes device reports automatically. **Version N saved · Up to date** confirms that a recently connected device reported saving that publication. **Waiting for version N** means receipt has not been confirmed. **No recent contact** means the device has not contacted the server recently; it may be offline, suspended or closed. Publication alone does not confirm receipt.
+The dashboard's **Connect a learner device** section refreshes device reports automatically. **Version N saved · Up to date** confirms that a recently connected device reported saving that publication. **Waiting for version N** means receipt has not been confirmed. **No recent contact** means the device has not contacted the server recently; it may be offline, suspended or closed. Publication alone does not confirm receipt.
 
 ## Recover or remove access
 
