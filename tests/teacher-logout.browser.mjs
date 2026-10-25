@@ -33,6 +33,8 @@ try {
       let status = 200;
       let response;
       if (path === "/api/auth/capabilities") response = { state: "enabled" };
+      else if (path === "/api/auth/google/config")
+        response = { enabled: false, signupEnabled: false };
       else if (path === "/api/auth/session") {
         response = ++sessionReads === 1 ? originalSession : refreshedSession;
       } else if (path === "/api/classrooms") {

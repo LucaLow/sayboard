@@ -1,10 +1,11 @@
 export type PhraseAudio = { samples: Float32Array; sampleRate: number };
 
 // Audio and text stay in memory only. Reloading the page clears both.
+// 12 MiB holds 32 prepared phrases of about four seconds of 24 kHz audio each.
 export class PhraseAudioCache {
   private entries = new Map<string, PhraseAudio>();
   private bytes = 0;
-  constructor(private maxBytes = 4 * 1024 * 1024, private maxEntries = 32) {}
+  constructor(private maxBytes = 12 * 1024 * 1024, private maxEntries = 32) {}
   get(key: string): PhraseAudio | undefined {
     const value = this.entries.get(key);
     if (value) {

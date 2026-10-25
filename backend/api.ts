@@ -19,6 +19,7 @@ export function requestRejection(
   request: Request,
   peer: string,
   config: ApiConfig,
+  options: { allowCrossSiteNavigation?: boolean } = {},
 ): Response | null {
   const url = new URL(request.url);
   if (config.kind === "local") {
@@ -48,7 +49,8 @@ export function requestRejection(
   if (
     (origin !== null && origin !== config.origin) ||
     (mutating && origin !== config.origin) ||
-    request.headers.get("sec-fetch-site") === "cross-site"
+    (request.headers.get("sec-fetch-site") === "cross-site" &&
+      !options.allowCrossSiteNavigation)
   )
     return json(403, { error: "origin_rejected" });
   return null;
@@ -218,7 +220,9 @@ export async function createApi(
           account = await store.account(input.username);
           valid = await verifyPassword(
             input.password,
-            account?.passwordHash ?? dummyHash,
+            account?.passwordHash.startsWith("scrypt$")
+              ? account.passwordHash
+              : dummyHash,
           );
         } finally {
           passwordChecks--;
@@ -226,6 +230,7 @@ export async function createApi(
         if (
           !valid ||
           !account ||
+          !account.passwordHash.startsWith("scrypt$") ||
           !allowedAccount(account) ||
           (config.kind === "hosted" && input.password.length < 16)
         )

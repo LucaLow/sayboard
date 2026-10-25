@@ -40,6 +40,30 @@ describe('local speech engine', () => {
     await engine.loadModel(); engine.speak('I need water'); await flush();
     expect(output.system).toHaveBeenCalledWith('I need water', expect.any(Object));
   });
+  it('keeps the local voice for later phrases after one phrase fails', async () => {
+    const { engine, model, output } = fixture(async text => { if (text === 'Too long') throw new Error('Phrase generation failed'); return audio; });
+    Object.defineProperty(model, 'available', { get: () => true });
+    const statuses: string[] = []; engine.subscribe(status => statuses.push(status.phase));
+    await engine.loadModel(); engine.speak('Too long'); await flush();
+    expect(statuses.at(-1)).toBe('ready');
+    engine.speak('Water'); await flush(); engine.speak('Water'); await flush();
+    expect(model.generate).toHaveBeenLastCalledWith('Water', 1); expect(output.play).toHaveBeenCalledOnce();
+    expect(await engine.preparePhrases(['Yes'])).toEqual({ prepared: 1, cancelled: false });
+  });
+  it('still plays prepared audio after the model stops', async () => {
+    let stopped = false;
+    const { engine, model, output } = fixture(async text => { if (text === 'Too slow') { stopped = true; throw new Error('Speech worker stopped'); } return audio; });
+    Object.defineProperty(model, 'available', { get: () => !stopped });
+    const statuses: string[] = []; engine.subscribe(status => statuses.push(status.phase));
+    await engine.loadModel(); await engine.preparePhrases(['Yes', 'Help']);
+    engine.speak('Too slow'); await flush();
+    expect(statuses.at(-1)).toBe('error');
+    vi.mocked(output.system).mockClear();
+    engine.speak('Yes'); await flush();
+    expect(output.play).toHaveBeenCalledOnce(); expect(output.system).not.toHaveBeenCalled();
+    engine.speak('No'); await flush();
+    expect(output.system).toHaveBeenCalledWith('No', expect.any(Object)); expect(model.generate).toHaveBeenCalledTimes(3);
+  });
   it('does not resurrect a cancelled download', async () => {
     const { engine, model } = fixture(); let finish: (() => void) | undefined;
     model.load = () => new Promise(resolve => { finish = resolve; });
@@ -190,6 +214,15 @@ it('prepares custom phrases silently with deduplication and a 32-entry cap', asy
   expect(model.generate).toHaveBeenCalledTimes(32); expect(output.play).not.toHaveBeenCalled();
   expect(model.generate).not.toHaveBeenCalledWith('Phrase 31', 1);
   engine.speak('Custom'); await flush(); expect(model.generate).toHaveBeenCalledTimes(32); expect(output.play).toHaveBeenCalledOnce();
+});
+
+it('keeps all 32 prepared phrases of a few seconds each in memory', async () => {
+  const { engine, output, model } = fixture(async () => ({ samples: new Float32Array(24000 * 3).fill(0.01), sampleRate: 24000 }));
+  await engine.loadModel();
+  const phrases = Array.from({ length: 32 }, (_, i) => `Board phrase ${i}`);
+  expect(await engine.preparePhrases(phrases)).toEqual({ prepared: 32, cancelled: false });
+  engine.speak('Board phrase 0'); await flush();
+  expect(model.generate).toHaveBeenCalledTimes(32); expect(output.system).not.toHaveBeenCalled(); expect(output.play).toHaveBeenCalledOnce();
 });
 
 it('stops admitting preparation work after its 60-second budget', async () => {

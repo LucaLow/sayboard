@@ -8,7 +8,7 @@ set -euo pipefail
 recipe=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 emcc="$EMSDK_ROOT/upstream/emscripten/emcc"
 emcmake="$EMSDK_ROOT/upstream/emscripten/emcmake"
-"$emcc" --version | head -1 | rg -q '3\.1\.64'
+"$emcc" --version | head -1 | grep -q '3\.1\.64'
 if [[ -d "$ESPEAK_SOURCE/.git" ]]; then
   [[ $(git -C "$ESPEAK_SOURCE" rev-parse HEAD) == 4870adfa25b1a32b4361592f1be8a40337c58d6c ]]
 fi
@@ -24,9 +24,13 @@ mkdir -p "$BUILD_ROOT/data/lang/gmw" "$BUILD_ROOT/output"
 cp "$BUILD_ROOT/native/espeak-ng-data/"{en_dict,phondata,phontab,phonindex,intonations} "$BUILD_ROOT/data/"
 cp "$BUILD_ROOT/native/espeak-ng-data/lang/gmw/"en* "$BUILD_ROOT/data/lang/gmw/"
 "$emcc" "$recipe/glue.c" "$BUILD_ROOT/wasm/src/libespeak-ng/libespeak-ng.a" "$BUILD_ROOT/wasm/src/ucd-tools/libucd.a" "$BUILD_ROOT/wasm/src/speechPlayer/libspeechPlayer.a" -I "$ESPEAK_SOURCE/src/include" -lstdc++ -O3 -sMODULARIZE=1 -sEXPORT_ES6=1 -sENVIRONMENT=web,worker,node -sALLOW_MEMORY_GROWTH=1 -sEXPORTED_RUNTIME_METHODS=ccall -sFILESYSTEM=1 --embed-file "$BUILD_ROOT/data@/usr/share/espeak-ng-data" -o "$BUILD_ROOT/output/espeak.js"
-python - "$BUILD_ROOT/output/espeak.js" <<'PY'
+python3 - "$BUILD_ROOT/output/espeak.js" <<'PY'
 import pathlib,sys
 p=pathlib.Path(sys.argv[1]);p.write_text('// GPL-3.0-or-later. eSpeak NG 1.52.0, 2026-10-11 Sayboard source build. See COPYING and scripts/speech/espeak/README.md.\n'+p.read_text())
 PY
 cp "$ESPEAK_SOURCE/COPYING" "$BUILD_ROOT/output/"
-sha256sum "$BUILD_ROOT/output/"{espeak.js,espeak.wasm}
+if command -v sha256sum >/dev/null; then
+  sha256sum "$BUILD_ROOT/output/"{espeak.js,espeak.wasm}
+else
+  shasum -a 256 "$BUILD_ROOT/output/"{espeak.js,espeak.wasm}
+fi

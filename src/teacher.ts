@@ -1,14 +1,23 @@
+import { createDirectBoardEditor } from "./direct-board-editor";
+import { createThemeToggle } from "./theme-toggle";
+import { hasBoardChanges } from "./editor-state";
+import { createTeacherWorkspace } from "./teacher-workspace";
+import {
+  parseTeacherLocation,
+  teacherHref,
+  type WorkspaceSection,
+} from "./teacher-navigation";
 import { createElement as el, createButton as button } from "./dom";
 import { renderSymbol } from "./symbols";
 import { accountClient, AccountError } from "./account";
 import { teacherClient, ClassroomError } from "./classroom-client";
 import {
-  id,
   type Classroom,
   type ClassroomDetail,
   type ProfileDetail,
 } from "./classroom-contract";
-import { serializeBoard } from "./board";
+import { serializeBoard, type Board } from "./board";
+import { pendingTeacherDemo, clearTeacherDemoIntent } from "./teacher-demo";
 import "./style.css";
 import "./teacher.css";
 import {
@@ -16,6 +25,7 @@ import {
   createInvitationsPanel,
   showActivation,
 } from "./teacher-invitations";
+import { mountGoogleSignIn, googleSignInNotice } from "./google-signin";
 
 const root = document.querySelector<HTMLDivElement>("#teacher-app");
 if (!root) throw new Error("Missing teacher workspace");
@@ -26,12 +36,143 @@ let busy = false;
 let rooms: Classroom[] = [];
 let room: ClassroomDetail | null = null;
 let profile: ProfileDetail | null = null;
+const localDrafts = new Map<string, { board: Board; revision: number }>();
+window.addEventListener("beforeunload", (event) => {
+  if (localDrafts.size) event.preventDefault();
+});
 let notice = "Checking the classroom service…";
 let errorNotice = false;
 let pairing: { code: string; expiresAt: number } | null = null;
 const fieldValues = new Map<string, string>();
 let deviceStatusContainer: HTMLElement | null = null;
 let refreshingDevices = false;
+let nextFocus = "";
+let workspaceSection: WorkspaceSection = "board";
+let activeActionURL: string | null = null;
+let routeRequest = 0;
+let requestedLocation = "";
+let exampleBoard: Board | null = null;
+try {
+  exampleBoard = pendingTeacherDemo(sessionStorage);
+} catch {
+  // A blocked tab store never falls back to the learner's device board.
+}
+function consumedExample() {
+  exampleBoard = null;
+  try {
+    clearTeacherDemoIntent(sessionStorage);
+  } catch {
+    // Saving a board has already succeeded; tab storage is optional.
+  }
+}
+function textField(key: string, labelText: string, placeholder = "") {
+  const label = el("label", "", labelText);
+  const input = el("input");
+  input.required = true;
+  input.maxLength = 100;
+  input.value = fieldValues.get(key) ?? "";
+  input.placeholder = placeholder;
+  input.oninput = () => fieldValues.set(key, input.value);
+  label.append(input);
+  return { label, input };
+}
+function firstBoardForm() {
+  const setup = el("form", "teacher-form teacher-first-board");
+  const classroom = textField(
+    "first-classroom",
+    "Classroom name",
+    "My classroom",
+  );
+  const learner = textField("first-learner", "Learner alias", "Learner A");
+  const submit = el("button", "button primary", "Create first board");
+  submit.type = "submit";
+  setup.append(
+    classroom.label,
+    learner.label,
+    el(
+      "p",
+      "teacher-muted",
+      "Use an alias instead of a learner's full name. Learners need no email or account.",
+    ),
+    submit,
+  );
+  setup.onsubmit = (event) => {
+    event.preventDefault();
+    const name = classroom.input.value.trim();
+    const alias = learner.input.value.trim();
+    if (!name || !alias) return;
+    void perform(async () => {
+      const created = await teacherClient.create(name);
+      rooms = [...rooms, created];
+      room = { ...created, profiles: [] };
+      profile = null;
+      pairing = null;
+      rememberLocation();
+      // Keep a recoverable classroom if learner creation fails; retrying from
+      // that classroom must not create another empty classroom.
+      fieldValues.set("profile", alias);
+      profile = await teacherClient.addProfile(
+        created.id,
+        alias,
+        exampleBoard ?? undefined,
+      );
+      room = await teacherClient.classroom(created.id);
+      consumedExample();
+      fieldValues.delete("first-classroom");
+      fieldValues.delete("first-learner");
+      fieldValues.delete("profile");
+      rememberLocation();
+      notice = "Board ready. Edit the words or preview it.";
+    });
+  };
+  return setup;
+}
+function exampleForExistingClassroom() {
+  const card = el("section", "teacher-card teacher-first-board-card");
+  const save = el("form", "teacher-form");
+  const label = el("label", "", "Save in classroom");
+  const select = el("select");
+  select.id = "teacher-example-classroom";
+  label.htmlFor = select.id;
+  for (const value of rooms) select.append(new Option(value.name, value.id));
+  const alias = textField("example-learner", "Learner alias", "Learner A");
+  const submit = el(
+    "button",
+    "button primary",
+    "Save example as a new learner board",
+  );
+  submit.type = "submit";
+  save.append(label, select, alias.label, submit);
+  save.onsubmit = (event) => {
+    event.preventDefault();
+    const classroom = rooms.find((value) => value.id === select.value);
+    const name = alias.input.value.trim();
+    if (!classroom || !name || !exampleBoard) return;
+    void perform(async () => {
+      profile = await teacherClient.addProfile(
+        classroom.id,
+        name,
+        exampleBoard ?? undefined,
+      );
+      room = await teacherClient.classroom(classroom.id);
+      consumedExample();
+      fieldValues.delete("example-learner");
+      rememberLocation();
+      notice =
+        "Example saved as a private classroom draft. Try it before publishing.";
+    });
+  };
+  card.append(
+    el("h2", "", "Keep the board you tried"),
+    el(
+      "p",
+      "",
+      "Create a new learner board from the example in this tab. Saving sends that board to your teacher workspace.",
+    ),
+    save,
+  );
+  return card;
+}
 
 function lastContact(timestamp: number | null) {
   if (timestamp === null) return "No contact reported yet";
@@ -64,9 +205,9 @@ function renderDevices(container: HTMLElement, current: ProfileDetail) {
       device.expiresAt <= Date.now()
         ? "Link expired. Pair this device again."
         : applied
-          ? `Version ${device.appliedVersion} saved${recent ? " · Up to date" : ""}`
+          ? `Version ${device.appliedVersion} saved${recent ? ". Up to date" : ""}`
           : current.publishedVersion
-            ? `Waiting for version ${current.publishedVersion}${device.appliedVersion ? ` · Version ${device.appliedVersion} saved` : ""}`
+            ? `Waiting for version ${current.publishedVersion}${device.appliedVersion ? `. Version ${device.appliedVersion} saved` : ""}`
             : "Waiting for the first publication";
     details.append(
       el("strong", "", device.name),
@@ -78,7 +219,7 @@ function renderDevices(container: HTMLElement, current: ProfileDetail) {
       el(
         "span",
         "teacher-muted",
-        `${lastContact(device.lastSeenAt)}${device.lastSeenAt !== null && !recent ? " · No recent contact" : ""}`,
+        `${lastContact(device.lastSeenAt)}${device.lastSeenAt !== null && !recent ? ". No recent contact" : ""}`,
       ),
     );
     row.append(
@@ -196,6 +337,12 @@ function action(label: string, run: () => Promise<void>, primary = false) {
 async function perform(run: () => Promise<void>) {
   if (busy) return;
   busy = true;
+  const startingURL = location.href;
+  activeActionURL = startingURL;
+  const scrollPosition = window.scrollY;
+  const focused = document.activeElement;
+  const focusedLabel =
+    focused instanceof HTMLElement ? focused.textContent : null;
   root
     ?.querySelectorAll<HTMLInputElement | HTMLButtonElement>("input,button")
     .forEach((control) => (control.disabled = true));
@@ -213,9 +360,41 @@ async function perform(run: () => Promise<void>) {
       clearPrivateView();
   } finally {
     busy = false;
+    activeActionURL = null;
+    if (
+      requestedLocation &&
+      requestedLocation !== startingURL &&
+      location.href === requestedLocation
+    ) {
+      await restoreWorkspaceLocation();
+      return;
+    }
+    const navigated = location.href !== startingURL;
     render();
+    const target = errorNotice
+      ? root?.querySelector<HTMLElement>(".teacher-status")
+      : navigated
+        ? root?.querySelector<HTMLElement>("h1")
+        : nextFocus
+          ? root?.querySelector<HTMLElement>(nextFocus)
+          : Array.from(
+              root?.querySelectorAll<HTMLButtonElement>("button") ?? [],
+            ).find(
+              (node) => node.textContent === focusedLabel && !node.disabled,
+            );
+    if (target) {
+      if (target.tagName !== "BUTTON" && target.tagName !== "INPUT")
+        target.tabIndex = -1;
+      target.focus({ preventScroll: true });
+    }
+    window.scrollTo({
+      top: navigated ? 0 : scrollPosition,
+      behavior: "instant",
+    });
+    nextFocus = "";
   }
 }
+
 function clearPrivateView() {
   signedIn = false;
   operator = false;
@@ -223,17 +402,70 @@ function clearPrivateView() {
   room = null;
   profile = null;
   pairing = null;
+  workspaceSection = "board";
+  requestedLocation = "";
+  routeRequest++;
   fieldValues.clear();
+  localDrafts.clear();
   history.replaceState(null, "", location.pathname);
 }
-function rememberLocation() {
-  history.replaceState(
-    null,
-    "",
-    location.pathname +
-      (room ? `#${room.id}${profile ? "/" + profile.id : ""}` : ""),
+function rememberLocation(replace = false) {
+  if (activeActionURL && location.href !== activeActionURL) return;
+  const destination = teacherHref(
+    room
+      ? profile
+        ? {
+            kind: "learner",
+            classroomId: room.id,
+            profileId: profile.id,
+            section: workspaceSection,
+          }
+        : { kind: "classroom", classroomId: room.id }
+      : { kind: "classrooms" },
   );
+  if (location.pathname + location.hash === destination) return;
+  if (replace) history.replaceState(null, "", destination);
+  else history.pushState(null, "", destination);
+  if (activeActionURL) activeActionURL = location.href;
 }
+async function restoreWorkspaceLocation() {
+  if (!signedIn) return;
+  const destination = location.href;
+  requestedLocation = destination;
+  const ticket = ++routeRequest;
+  const route = parseTeacherLocation(location.hash);
+  if (!route) {
+    notice =
+      "This classroom address is invalid. Choose a classroom from the workspace.";
+    errorNotice = true;
+    render();
+    return;
+  }
+  const nextRoom =
+    route.kind === "classrooms"
+      ? null
+      : await teacherClient.classroom(route.classroomId);
+  const nextProfile =
+    route.kind === "learner" &&
+    nextRoom?.profiles.some((value) => value.id === route.profileId)
+      ? await teacherClient.profile(route.profileId)
+      : null;
+  if (ticket !== routeRequest || location.href !== destination) return;
+  room = nextRoom;
+  profile = nextProfile;
+  workspaceSection = route.kind === "learner" ? route.section : "board";
+  pairing = null;
+  if (!busy) {
+    render();
+    const heading = root?.querySelector<HTMLElement>("h1");
+    if (heading) {
+      heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
+    }
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }
+}
+
 function form(
   key: string,
   labelText: string,
@@ -243,6 +475,7 @@ function form(
   const form = el("form", "teacher-form");
   const label = el("label", "", labelText);
   const input = el("input");
+  input.id = "teacher-" + key;
   input.required = true;
   input.maxLength = key === "device" ? 60 : 100;
   input.value = fieldValues.get(key) ?? "";
@@ -266,6 +499,7 @@ async function loadRoom(value: Classroom) {
   room = await teacherClient.classroom(value.id);
   profile = null;
   pairing = null;
+  workspaceSection = "board";
   rememberLocation();
   notice = "Choose a profile or add one below.";
 }
@@ -294,7 +528,7 @@ function render() {
   brand.append(renderSymbol("message-circle"), el("span", "", "sayboard"));
   const navigation = el("nav", "teacher-actions");
   navigation.setAttribute("aria-label", "Teacher navigation");
-  navigation.append(link("Open communication board", "/"));
+  navigation.append(link("Open communication board", "/"), createThemeToggle());
   // Clearing a rejected private view must not remove the only way to end a
   // server session that survived a failed logout.
   if (signedIn || accountClient.currentSession())
@@ -305,7 +539,15 @@ function render() {
         accountClient.currentSession()?.account.username ?? "",
       ),
       action("Sign out", async () => {
+        if (
+          localDrafts.size &&
+          !(await confirm(
+            "Sign out and discard unsaved board changes in this tab?",
+          ))
+        )
+          return;
         await accountClient.logout();
+        consumedExample();
         clearPrivateView();
         notice = "Signed out.";
       }),
@@ -319,7 +561,6 @@ function render() {
   );
   status.role = "status";
   status.setAttribute("aria-live", "polite");
-  shell.append(el("p", "teacher-eyebrow", "TEACHER WORKSPACE"));
   if (!signedIn) {
     shell.append(
       el("h1", "", "A familiar board for every learner."),
@@ -339,6 +580,7 @@ function render() {
       ),
     );
     const login = el("form", "teacher-form");
+    if (!serviceDisabled) mountGoogleSignIn(card);
     const usernameLabel = el("label", "", "Teacher username");
     const username = el("input");
     username.autocomplete = "username";
@@ -379,7 +621,24 @@ function render() {
         "Need a password reset? Contact your Sayboard administrator. Student accounts and email addresses are not required.",
       ),
     );
-    shell.append(card, status);
+    const welcome = el("section", "teacher-card teacher-welcome");
+    welcome.append(
+      el("h2", "", "Try a board before you sign up"),
+      el(
+        "p",
+        "",
+        "Hear the words, change a few tiles, and see what could work for your learner. No account or student details needed.",
+      ),
+      link("Try a board", "/?teacherDemo=1", "button primary"),
+      el(
+        "p",
+        "teacher-muted",
+        "Your example stays in this tab. Your saved device board is unchanged.",
+      ),
+    );
+    const entry = el("div", "teacher-entry-grid");
+    entry.append(welcome, card);
+    shell.append(entry, status);
   } else if (!room) {
     shell.append(
       el("h1", "", "Your classrooms"),
@@ -399,50 +658,44 @@ function render() {
       );
       grid.append(card);
     }
-    if (!rooms.length)
-      grid.append(
+    if (!rooms.length) {
+      const create = el("section", "teacher-card teacher-first-board-card");
+      create.append(
+        el("h2", "", "Your first classroom, step by step"),
         el(
           "p",
-          "teacher-empty",
-          "Start with a demonstration classroom. You can prepare and test boards before linking a learner’s device.",
+          "",
+          exampleBoard
+            ? "Keep the board you just tried. Create a classroom and learner alias to save your example as a private draft on this server."
+            : "Give your classroom a name and add one learner alias. We'll start a board you can try and change.",
+        ),
+        firstBoardForm(),
+      );
+      grid.append(create);
+    } else {
+      const create = el("section", "teacher-card");
+      create.append(
+        el("h2", "", "Create a classroom"),
+        form(
+          "classroom",
+          "Classroom name",
+          "Create classroom",
+          async (name) => {
+            const created = await teacherClient.create(name);
+            rooms = await teacherClient.list();
+            await loadRoom(created);
+          },
         ),
       );
-    const create = el("section", "teacher-card");
-    create.append(
-      el("h2", "", "Create a classroom"),
-      form("classroom", "Classroom name", "Create classroom", async (name) => {
-        const created = await teacherClient.create(name);
-        rooms = await teacherClient.list();
-        await loadRoom(created);
-      }),
-    );
-    grid.append(create);
-    shell.append(grid);
-    if (!rooms.length) {
-      const guide = el("ol", "teacher-start-guide");
-      for (const step of [
-        "Create a classroom and add a learner alias.",
-        "Edit and preview the learner’s board.",
-        "Publish a version when it is ready.",
-        "Link a learner’s device once. Future publications arrive automatically.",
-      ])
-        guide.append(el("li", "", step));
-      shell.append(
-        el("h2", "teacher-guide-heading", "Your first classroom, step by step"),
-        guide,
-      );
+      grid.append(create);
     }
+    if (exampleBoard && rooms.length)
+      shell.append(exampleForExistingClassroom());
+    shell.append(grid);
     if (operator) shell.append(createInvitationsPanel());
   } else if (!profile) {
     const current = room;
     shell.append(
-      action("All classrooms", async () => {
-        rooms = await teacherClient.list();
-        room = null;
-        pairing = null;
-        rememberLocation();
-        notice = "Your classrooms are up to date.";
-      }),
       el("h1", "", current.name),
       el(
         "p",
@@ -468,6 +721,7 @@ function render() {
           async () => {
             profile = await teacherClient.profile(value.id);
             pairing = null;
+            workspaceSection = "board";
             rememberLocation();
             notice = "Edit the draft, then publish when it is ready.";
           },
@@ -482,10 +736,17 @@ function render() {
       el(
         "p",
         "",
-        "Each profile starts with the starter board. Edit it or import an existing Sayboard file.",
+        exampleBoard
+          ? "Your example is still in this tab. Add the learner to save that example as a private classroom draft."
+          : "Each profile starts with the starter board. Edit it or import an existing Sayboard file.",
       ),
       form("profile", "Profile alias", "Add profile", async (label) => {
-        profile = await teacherClient.addProfile(current.id, label);
+        profile = await teacherClient.addProfile(
+          current.id,
+          label,
+          exampleBoard ?? undefined,
+        );
+        consumedExample();
         room = await teacherClient.classroom(current.id);
         rememberLocation();
         notice =
@@ -504,6 +765,7 @@ function render() {
         )
           return;
         await teacherClient.removeClassroom(current.id);
+        for (const learner of current.profiles) localDrafts.delete(learner.id);
         rooms = await teacherClient.list();
         room = null;
         rememberLocation();
@@ -514,8 +776,8 @@ function render() {
   } else {
     const current = profile;
     const classroom = room;
+    const workingBoard = localDrafts.get(current.id)?.board ?? current.board;
     shell.append(
-      action("Back to " + classroom.name, () => loadRoom(classroom)),
       el("h1", "", current.label),
       el(
         "p",
@@ -524,63 +786,54 @@ function render() {
       ),
       status,
     );
-    const progress = el("ol", "teacher-progress");
-    progress.setAttribute("aria-label", "Board setup");
-    for (const [title, detail] of [
-      ["1. Prepare", `Draft revision ${current.revision}`],
-      [
-        "2. Publish",
-        current.publishedVersion
-          ? `Version ${current.publishedVersion} available`
-          : "Not published yet",
-      ],
-      [
-        "3. Connect",
-        current.devices.length
-          ? `${current.devices.length} linked device${current.devices.length === 1 ? "" : "s"}`
-          : "No devices linked yet",
-      ],
-    ]) {
-      const step = el("li");
-      const description = el("span", "", detail);
-      if (title === "3. Connect") description.dataset.deviceCount = "";
-      step.append(el("strong", "", title), description);
-      progress.append(step);
-    }
-    shell.append(progress);
     const grid = el("div", "teacher-profile-grid");
     const draft = el("section", "teacher-card teacher-draft");
-    const homeTiles = current.board.tiles.filter(Boolean).length;
+    const homeTiles = workingBoard.tiles.filter(Boolean).length;
     draft.append(
-      el("p", "teacher-eyebrow", "DRAFT"),
-      el("h2", "", "Prepare the board"),
+      el("h2", "", "Draft board"),
       el(
         "p",
         "",
-        `${homeTiles} home ${homeTiles === 1 ? "tile" : "tiles"} · ${current.board.subBoards.length} ${current.board.subBoards.length === 1 ? "category" : "categories"} · Draft revision ${current.revision}`,
+        `${homeTiles} home ${homeTiles === 1 ? "tile" : "tiles"}, ${workingBoard.subBoards.length} ${workingBoard.subBoards.length === 1 ? "category" : "categories"}. Draft revision ${current.revision}`,
       ),
     );
     const actions = el("div", "teacher-actions");
     const editor = `/?teacherBoard=${current.id}&classroom=${classroom.id}`;
     actions.append(
-      link("Edit board", editor, "button primary"),
+      link("Board settings", editor),
       link("Preview board", editor + "&preview=1"),
-      button("Export draft", () => exportProfile(current)),
     );
-    const boardPreview = el("div", "teacher-board-preview");
-    boardPreview.setAttribute("aria-label", "Saved draft vocabulary preview");
-    for (const tile of current.board.tiles.slice(0, 10)) {
-      const previewTile = el(
-        "div",
-        tile
-          ? `teacher-preview-tile ${tile.tone}`
-          : "teacher-preview-tile empty",
-      );
-      if (tile)
-        previewTile.append(renderSymbol(tile.icon), el("span", "", tile.label));
-      else previewTile.setAttribute("aria-label", "Empty slot");
-      boardPreview.append(previewTile);
-    }
+    const boardPreview = createDirectBoardEditor({
+      board: workingBoard,
+      confirm,
+      onChange: (next) => {
+        if (hasBoardChanges(current.board, next))
+          localDrafts.set(current.id, {
+            board: next,
+            revision: localDrafts.get(current.id)?.revision ?? current.revision,
+          });
+        else localDrafts.delete(current.id);
+        notice = localDrafts.has(current.id)
+          ? "Unsaved board changes. Save draft before publishing."
+          : "No unsaved board changes.";
+        errorNotice = false;
+        status.textContent = notice;
+        status.classList.remove("error");
+        const summary = draft.querySelector(":scope > p");
+        if (summary) {
+          const count = next.tiles.filter(Boolean).length;
+          summary.textContent = `${count} home ${count === 1 ? "tile" : "tiles"}, ${next.subBoards.length} ${next.subBoards.length === 1 ? "category" : "categories"}. Draft revision ${current.revision}`;
+        }
+        const save = root?.querySelector<HTMLButtonElement>(
+          ".workspace-inline-save",
+        );
+        const publish = root?.querySelector<HTMLButtonElement>(
+          ".workspace-inline-publish",
+        );
+        if (save) save.disabled = !localDrafts.has(current.id);
+        if (publish) publish.disabled = localDrafts.has(current.id);
+      },
+    });
     draft.append(boardPreview, actions);
     const duplicate = el("details", "teacher-secondary-tools");
     duplicate.append(
@@ -593,7 +846,7 @@ function render() {
           profile = await teacherClient.addProfile(
             classroom.id,
             label,
-            current.board,
+            localDrafts.get(current.id)?.board ?? current.board,
           );
           room = await teacherClient.classroom(classroom.id);
           pairing = null;
@@ -603,17 +856,37 @@ function render() {
         },
       ),
     );
-    draft.append(duplicate);
+    const tools = el("details", "teacher-secondary-tools");
+    tools.append(
+      el("summary", "", "More board options"),
+      button("Export draft", () =>
+        exportProfile({
+          ...current,
+          board: localDrafts.get(current.id)?.board ?? current.board,
+        }),
+      ),
+      action("Refresh saved draft", async () => {
+        if (
+          localDrafts.has(current.id) &&
+          !(await confirm("Replace your unsaved changes with the saved draft?"))
+        )
+          return;
+        await refreshProfile();
+        localDrafts.delete(current.id);
+        notice = "Saved draft refreshed.";
+      }),
+      duplicate,
+    );
+    draft.append(tools);
     grid.append(draft);
     const publish = el("section", "teacher-card teacher-publication");
     publish.append(
-      el("p", "teacher-eyebrow", "PUBLISHED"),
       el(
         "h2",
         "",
         current.publishedVersion
-          ? `Version ${current.publishedVersion}`
-          : "Ready when you are",
+          ? `Published version ${current.publishedVersion}`
+          : "Ready to publish",
       ),
       el(
         "p",
@@ -621,8 +894,12 @@ function render() {
         "Publish the saved draft to linked devices. Each learner keeps their current board until they finish speaking or editing.",
       ),
       action(
-        "Publish saved draft",
+        "Publish",
         async () => {
+          if (localDrafts.has(current.id)) {
+            notice = "Save your board changes before publishing.";
+            return;
+          }
           if (
             !(await confirm(
               `Publish the saved draft for ${current.label}? Linked devices will update automatically after speech, typing and caregiver editing finish.`,
@@ -631,19 +908,17 @@ function render() {
             return;
           profile = await teacherClient.publish(current.id, current.revision);
           room = await teacherClient.classroom(classroom.id);
-          notice = `Version ${profile.publishedVersion} published. Linked devices update automatically. Check their reports below to confirm receipt.`;
+          notice = profile.devices.length
+            ? `Version ${profile.publishedVersion} published. Linked devices update automatically. Check their reports below to confirm receipt.`
+            : `Version ${profile.publishedVersion} published. Open Devices to connect a learner.`;
         },
         true,
       ),
-      action("Refresh saved draft", async () => {
-        await refreshProfile();
-        notice = "Saved draft refreshed.";
-      }),
     );
     grid.append(publish);
     const devices = el("section", "teacher-card teacher-devices");
     devices.append(
-      el("h2", "", "Classroom devices"),
+      el("h2", "", "Connected devices"),
       el(
         "p",
         "",
@@ -655,20 +930,24 @@ function render() {
     renderDevices(reports, current);
     devices.append(reports);
     const setup = el("details", "teacher-device-setup");
+    setup.id = "teacher-device-setup";
     setup.open = !current.devices.length || pairing !== null;
     setup.append(
       el("summary", "", "Link a learner device"),
-      el(
-        "p",
-        "teacher-muted",
-        "On the learner’s device, open the address below. Choose Caregiver controls → Edit board and settings → Backup and transfer → Classroom board. Enter the code, choose Link classroom device and confirm the initial connection.",
-      ),
+      el("ol", "teacher-device-instructions", ""),
       form("device", "Device name", "Create pairing code", async (name) => {
         pairing = await teacherClient.pairing(current.id, name);
         notice =
-          "Enter this code on the intended device within ten minutes and confirm the initial connection. Future publications sync automatically. Creating another code replaces this one.";
+          "Pairing code ready. Enter it on the learner’s device within ten minutes.";
       }),
     );
+    const instructions = setup.querySelector("ol");
+    for (const instruction of [
+      "Open the address below on the learner's device. It opens the connection screen directly.",
+      "Enter the code below and choose Link classroom device.",
+      "Confirm the connection, then choose Back to board. Your learner's board will arrive when communication is idle.",
+    ])
+      instructions?.append(el("li", "", instruction));
     const address = el(
       "label",
       "teacher-link-field",
@@ -676,7 +955,7 @@ function render() {
     );
     const addressInput = el("input");
     addressInput.readOnly = true;
-    addressInput.value = location.origin + "/";
+    addressInput.value = location.origin + "/?linkClassroom=1";
     addressInput.onclick = () => addressInput.select();
     address.append(addressInput);
     setup.insertBefore(address, setup.querySelector("form"));
@@ -729,12 +1008,12 @@ function render() {
         el(
           "span",
           "",
-          `Version ${version.number} · ${new Date(version.createdAt).toLocaleString()}`,
+          `Version ${version.number}, published ${new Date(version.createdAt).toLocaleString()}`,
         ),
         action("Restore version " + version.number + " to draft", async () => {
           if (
             !(await confirm(
-              `Replace the saved draft with version ${version.number}? The currently published version stays unchanged until you publish this draft.`,
+              `Replace ${localDrafts.has(current.id) ? "your unsaved changes and the saved draft" : "the saved draft"} with version ${version.number}? The currently published version stays unchanged until you publish this draft.`,
             ))
           )
             return;
@@ -743,6 +1022,7 @@ function render() {
             current.revision,
             version.number,
           );
+          localDrafts.delete(current.id);
           notice = `Version ${version.number} restored into the draft. Preview it before publishing.`;
         }),
       );
@@ -760,6 +1040,7 @@ function render() {
         )
           return;
         await teacherClient.removeProfile(current.id);
+        localDrafts.delete(current.id);
         await loadRoom(classroom);
         notice = "Profile deleted.";
       }),
@@ -773,7 +1054,80 @@ function render() {
       "Boards and published vocabulary are stored on this server. Spoken messages and speech history are not collected. The communication board remains available without a teacher session.",
     ),
   );
-  root.append(shell);
+  if (signedIn) {
+    const actions: Node[] = [];
+    let contextAction: Node | undefined;
+    if (room && profile) {
+      const preview = Array.from(
+        shell.querySelectorAll<HTMLAnchorElement>(
+          ".teacher-draft .teacher-actions a",
+        ),
+      ).find((node) => node.textContent === "Preview board");
+      contextAction = Array.from(
+        shell.querySelectorAll<HTMLAnchorElement>(
+          ".teacher-draft .teacher-actions a",
+        ),
+      ).find((node) => node.textContent === "Board settings");
+      const publish = shell.querySelector<HTMLButtonElement>(
+        ".teacher-publication button",
+      );
+      const save = button(
+        "Save draft",
+        () =>
+          void perform(async () => {
+            const pending = localDrafts.get(profile?.id ?? "");
+            if (!pending || !profile) return;
+            const saved = await teacherClient.save(
+              profile.id,
+              pending.revision,
+              structuredClone(pending.board),
+            );
+            localDrafts.delete(saved.id);
+            profile = saved;
+            notice = "Classroom draft saved. Publish when you are ready.";
+          }),
+        "button workspace-inline-save",
+      );
+      save.disabled = !localDrafts.has(profile.id);
+      if (publish) {
+        publish.classList.add("workspace-inline-publish");
+        publish.disabled = localDrafts.has(profile.id);
+      }
+      if (localDrafts.has(profile.id) && !errorNotice)
+        status.textContent =
+          "Unsaved board changes. Save draft before publishing.";
+      if (preview) actions.push(preview);
+      actions.push(save);
+      if (publish) actions.push(publish);
+      for (const panel of shell.querySelectorAll<HTMLElement>(
+        ".teacher-draft,.teacher-publication,.teacher-devices,.teacher-versions",
+      )) {
+        panel.hidden = panel.classList.contains("teacher-devices")
+          ? workspaceSection !== "devices"
+          : panel.classList.contains("teacher-versions")
+            ? workspaceSection !== "versions"
+            : workspaceSection !== "board";
+      }
+      const versions =
+        shell.querySelector<HTMLDetailsElement>(".teacher-versions");
+      if (versions && workspaceSection === "versions") versions.open = true;
+      const remove = shell.querySelector<HTMLElement>(".teacher-danger");
+      if (remove) remove.hidden = workspaceSection !== "board";
+      shell.querySelector(":scope > .teacher-intro")?.remove();
+    }
+    root.append(
+      createTeacherWorkspace({
+        content: shell,
+        room,
+        profile,
+        section: workspaceSection,
+        actions,
+        contextAction,
+        feedback: status,
+        title: shell.querySelector("h1")?.textContent ?? "Your classrooms",
+      }),
+    );
+  } else root.append(shell);
   if (busy)
     root
       .querySelectorAll<HTMLInputElement | HTMLButtonElement>("input,button")
@@ -783,13 +1137,29 @@ setInterval(() => void refreshDeviceReports(), 5000);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") void refreshDeviceReports();
 });
-// Opening another private link in this tab changes only the fragment. Start a
-// fresh activation page rather than leaving the signed-in workspace on screen.
-window.addEventListener("hashchange", () => {
-  if (new URLSearchParams(location.hash.slice(1)).has("activate"))
+function handleLocationChange() {
+  if (new URLSearchParams(location.hash.slice(1)).has("activate")) {
     location.reload();
-});
+    return;
+  }
+  if (requestedLocation === location.href) return;
+  const destination = location.href;
+  void restoreWorkspaceLocation().catch((error) => {
+    if (location.href !== destination) return;
+    notice =
+      error instanceof Error
+        ? error.message
+        : "This classroom could not be opened.";
+    errorNotice = true;
+    if (error instanceof ClassroomError && [401, 403].includes(error.status))
+      clearPrivateView();
+    render();
+  });
+}
+window.addEventListener("hashchange", handleLocationChange);
+window.addEventListener("popstate", handleLocationChange);
 const activation = new URLSearchParams(location.hash.slice(1)).get("activate");
+const googleNotice = googleSignInNotice();
 if (activation !== null) {
   history.replaceState(null, "", location.pathname);
   void showActivation(root, activation, (username) => {
@@ -809,22 +1179,15 @@ if (activation !== null) {
     }
     const session = await accountClient.restoreSession();
     if (!session) {
-      notice = "Sign in to open your classrooms.";
+      notice = googleNotice ?? "Sign in to open your classrooms.";
+      errorNotice = googleNotice !== null;
       return;
     }
     rooms = await teacherClient.list();
     operator = await canInvite();
     signedIn = true;
-    const parts = location.hash.slice(1).split("/");
-    if (parts[0]) {
-      const classroom = rooms.find((value) => value.id === id(parts[0]));
-      if (classroom) {
-        room = await teacherClient.classroom(classroom.id);
-        if (parts[1] && room.profiles.some((p) => p.id === parts[1]))
-          profile = await teacherClient.profile(id(parts[1]));
-      }
-    }
-    rememberLocation();
+    await restoreWorkspaceLocation();
+    rememberLocation(true);
     notice = "Your classroom workspace is up to date.";
   });
 }

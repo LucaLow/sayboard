@@ -4,7 +4,7 @@ SQLite is the default standalone deployment. Use this ordinary PostgreSQL adapte
 
 Apply `migrations/001_postgres.sql`, then `migrations/002_board_categories.sql`, using a schema-owner role. Existing schema-version-1 databases need only migration 002. The runtime requires schema version 2 and never migrates during a request.
 
-Create a separate runtime database role with only schema usage and the SELECT, INSERT, UPDATE and DELETE permissions needed on `sayboard.accounts`, `sayboard.sessions`, `sayboard.boards` and `sayboard.login_limits`. Keep migration ownership separate. Run `migrations/maintenance.sql` as a scheduled database maintenance task to prune expired sessions and login budgets.
+Create a separate runtime database role with only schema usage, SELECT on `sayboard.schema_version`, and the SELECT, INSERT, UPDATE and DELETE permissions needed on `sayboard.accounts`, `sayboard.sessions`, `sayboard.boards` and `sayboard.login_limits`. The server reads `schema_version` before use and does not start without it. Keep migration ownership separate. Run `migrations/maintenance.sql` as a scheduled database maintenance task to prune expired sessions and login budgets.
 
 Configure the standalone server with `SAYBOARD_AUTH_ENABLED=1`, `SAYBOARD_STORAGE=postgres`, `SAYBOARD_ORIGIN` set to its exact HTTPS origin, and `DATABASE_URL` supplied privately. Use a PostgreSQL URL with a username, password and database name. TLS certificate verification is mandatory; set `NODE_EXTRA_CA_CERTS` for a private CA. Unknown connection URL options are rejected.
 

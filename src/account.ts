@@ -69,6 +69,7 @@ export function createAccountClient(fetcher: typeof fetch = fetch) {
   let session: AccountSession | null = null;
   let availability: AccountAvailability | null = null;
   let capabilityRequest: Promise<AccountAvailability> | null = null;
+  let sessionCheck: Promise<AccountSession | null> | null = null;
   let pending = false;
   async function operation<T>(run: () => Promise<T>): Promise<T> {
     if (availability?.state === "disabled")
@@ -181,6 +182,15 @@ export function createAccountClient(fetcher: typeof fetch = fetch) {
     },
     async restoreSession() {
       return operation(readSession);
+    },
+    /** Checks the session once per page load, sharing any check in flight. */
+    async checkSession() {
+      if (!session)
+        await (sessionCheck ??= this.restoreSession().catch((error) => {
+          sessionCheck = null;
+          throw error;
+        }));
+      return session;
     },
     async login(username: string, password: string) {
       return operation(async () => {

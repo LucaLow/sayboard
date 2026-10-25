@@ -293,6 +293,36 @@ describe("same-origin account client contract", () => {
     expect(calls).toHaveLength(2);
   });
 
+  it("checks a signed-out session once per page load and shares a check in flight", async () => {
+    const pending = deferredResponse();
+    const { client, calls } = fixture(
+      pending.promise,
+      json(sessionResponse),
+      json({ ok: true }),
+    );
+    const checks = [client.checkSession(), client.checkSession()];
+    pending.resolve(json({}, 401));
+    expect(await Promise.all(checks)).toEqual([null, null]);
+    await expect(client.checkSession()).resolves.toBeNull();
+    await client.login("caregiver-test", "test-password");
+    await expect(client.checkSession()).resolves.toEqual(sessionResponse);
+    await client.logout();
+    await expect(client.checkSession()).resolves.toBeNull();
+    expect(calls.map((call) => call.path)).toEqual([
+      "/api/auth/session",
+      "/api/auth/login",
+      "/api/auth/logout",
+    ]);
+  });
+
+  it("retries a session check that failed", async () => {
+    const { client, calls } = fixture(json({}, 503), json(sessionResponse));
+    await expect(client.checkSession()).rejects.toMatchObject({ status: 503 });
+    await expect(client.checkSession()).resolves.toEqual(sessionResponse);
+    await expect(client.checkSession()).resolves.toEqual(sessionResponse);
+    expect(calls).toHaveLength(2);
+  });
+
   it("sends logout CSRF and clears memory only after a successful response", async () => {
     const { client, calls } = fixture(
       json(sessionResponse),
