@@ -402,7 +402,7 @@ export async function checkClassroomFlow({
     };
     await publish();
     await page
-      .getByRole("heading", { name: "Version 1", exact: true })
+      .getByRole("heading", { name: "Published version 1", exact: true })
       .waitFor();
     if (artifactDirectory) {
       await mkdir(artifactDirectory, { recursive: true });
@@ -584,13 +584,13 @@ export async function checkClassroomFlow({
     await publish();
     expectedVersion = 2;
     await page
-      .getByRole("heading", { name: "Version 2", exact: true })
+      .getByRole("heading", { name: "Published version 2", exact: true })
       .waitFor();
     await applied("Published two", untouchedAt);
     await page
       .locator(".teacher-device-row")
       .filter({ hasText: "Demo tablet" })
-      .getByText("Version 2 saved · Up to date", { exact: true })
+      .getByText("Version 2 saved. Up to date", { exact: true })
       .waitFor({ timeout: 15000 });
     if (artifactDirectory) {
       await page.screenshot({
