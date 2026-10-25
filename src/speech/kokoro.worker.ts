@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
 import { PHONEMIZER_WASM_URL } from './phonemizer';
+import { loadRuntimeModule } from './kokoro-runtime';
 import { KokoroTTS } from 'kokoro-js';
 import { env } from '@huggingface/transformers';
 import wasmUrl from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm?url';
@@ -35,7 +36,18 @@ const assetFetch: typeof fetch = async (input, init) => {
   const requested = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
   const url = pinnedAsset(requested);
   if (!url) {
-    if (new URL(requested, location.href).href === new URL(PHONEMIZER_WASM_URL, location.href).href || new URL(requested, location.href).href === new URL(wasmUrl, location.href).href || new URL(requested, location.href).href === new URL(mjsUrl, location.href).href) return networkFetch(input, init);
+    const href = new URL(requested, location.href).href;
+    const isWasm = [PHONEMIZER_WASM_URL, wasmUrl].some(asset => href === new URL(asset, location.href).href);
+    if (isWasm || href === new URL(mjsUrl, location.href).href) {
+      const response = await networkFetch(input, init);
+      if (!response.ok || /^text\/html/i.test(response.headers.get('content-type') ?? '')) throw new Error('Speech runtime download failed');
+      // Consume here, not in Emscripten: body failures must be recorded as download
+      // failures before load() decides whether the separately cached model is corrupt.
+      const bytes = await response.arrayBuffer();
+      const prefix = new TextDecoder().decode(bytes.slice(0, 256)).trimStart();
+      if (/^<(?:!doctype\s+html|html|head|body)\b/i.test(prefix) || (isWasm && !WebAssembly.validate(bytes))) throw new Error('Invalid speech runtime download');
+      return new Response(bytes, { status: response.status, statusText: response.statusText, headers: response.headers });
+    }
     throw new Error('Unexpected speech asset request blocked');
   }
   const stored = await cache?.match(url);
@@ -85,6 +97,10 @@ async function load() {
     }
   } catch { cache = null; }
   try {
+    // ONNX imports its .mjs natively, bypassing globalThis.fetch. A bad local
+    // module must not be mistaken for a corrupt cached model either.
+    try { await loadRuntimeModule(mjsUrl); }
+    catch (error) { downloadFailed = true; throw error; }
     // Download the voice too before announcing ready. Generate will make no network requests.
     await fetch(`https://huggingface.co/${MODEL_ID}/resolve/${MODEL_REVISION}/voices/af_heart.bin`);
     model = await KokoroTTS.from_pretrained(MODEL_ID, { dtype: 'q8', device: 'wasm' });

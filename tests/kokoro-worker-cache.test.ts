@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi, type Mock } from "vitest";
+import wasmUrl from "../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm?url";
+import mjsUrl from "../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.mjs?url";
 import {
   MODEL_CACHE,
   MODEL_ID,
@@ -6,7 +8,11 @@ import {
   VOICE_CACHE,
 } from "../src/speech/kokoro-assets";
 
-const { fromPretrained } = vi.hoisted(() => ({ fromPretrained: vi.fn() }));
+const { fromPretrained, loadRuntimeModule } = vi.hoisted(() => ({
+  fromPretrained: vi.fn(),
+  loadRuntimeModule: vi.fn(),
+}));
+vi.mock("../src/speech/kokoro-runtime", () => ({ loadRuntimeModule }));
 vi.mock("kokoro-js", () => ({
   KokoroTTS: { from_pretrained: fromPretrained },
 }));
@@ -80,6 +86,7 @@ beforeEach(() => {
     async () => new Response(new Uint8Array([1, 2, 3])),
   );
   fromPretrained.mockReset().mockImplementation(readConfig);
+  loadRuntimeModule.mockReset().mockResolvedValue(undefined);
   vi.stubGlobal("caches", storage);
   vi.stubGlobal("location", { href: "http://localhost/" });
   vi.stubGlobal("self", {
@@ -115,3 +122,117 @@ it("never caches a filter or captive portal page", async () => {
   expect(await load()).toBe("error");
   expect((await storage.open(MODEL_CACHE)).entries.size).toBe(0);
 });
+
+const validWasm = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]);
+const brokenBodies = [
+  [
+    "interrupted stream",
+    () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.error(new TypeError("Connection lost"));
+          },
+        }),
+      ),
+  ],
+  ["HTML error page", html],
+  [
+    "mislabelled HTML",
+    () =>
+      new Response("<!doctype html><html>Blocked</html>", {
+        headers: { "content-type": "application/wasm" },
+      }),
+  ],
+  [
+    "truncated binary",
+    () =>
+      new Response(new Uint8Array([...validWasm, 1, 4, 1]), {
+        headers: { "content-type": "application/wasm" },
+      }),
+  ],
+] as const;
+
+for (const runtime of ["/espeak.wasm", wasmUrl]) {
+  it.each(brokenBodies)(
+    `keeps good caches after ${runtime} returns a 200 %s and retries without downloading the model`,
+    async (_name, broken) => {
+      const model = await storage.open(MODEL_CACHE);
+      model.entries.set(asset("config.json"), new Response("{}"));
+      model.entries.set(
+        asset("onnx/model_quantized.onnx"),
+        new Response("model"),
+      );
+      model.entries.set(asset("voices/af_heart.bin"), new Response("voice"));
+      const voices = await storage.open(VOICE_CACHE);
+      fromPretrained.mockImplementation(async () => {
+        await readConfig();
+        await (
+          await fetch(asset("onnx/model_quantized.onnx", "main"))
+        ).arrayBuffer();
+        await WebAssembly.compile(await (await fetch(runtime)).arrayBuffer());
+        return { generate: async () => ({}) };
+      });
+      network.mockImplementation(async () => broken());
+      expect(await load()).toBe("error");
+      expect(storage.stores.get(MODEL_CACHE)).toBe(model);
+      expect(storage.stores.get(VOICE_CACHE)).toBe(voices);
+      network.mockImplementation(async () => new Response(validWasm));
+      expect(await load()).toBe("ready");
+      expect(network).toHaveBeenCalledTimes(2);
+      expect(network.mock.calls.every(([url]) => url === runtime)).toBe(true);
+    },
+  );
+}
+
+it.each(brokenBodies.slice(0, 3))(
+  "keeps good caches after a runtime module returns a 200 %s",
+  async (_name, broken) => {
+    const model = await storage.open(MODEL_CACHE);
+    model.entries.set(asset("config.json"), new Response("{}"));
+    model.entries.set(asset("voices/af_heart.bin"), new Response("voice"));
+    const voices = await storage.open(VOICE_CACHE);
+    fromPretrained.mockImplementation(async () => {
+      await readConfig();
+      const source = await (await fetch(mjsUrl)).text();
+      if (source !== "export {};") throw new SyntaxError("Invalid module");
+      return { generate: async () => ({}) };
+    });
+    network.mockImplementation(async () => broken());
+    expect(await load()).toBe("error");
+    expect(storage.stores.get(MODEL_CACHE)).toBe(model);
+    expect(storage.stores.get(VOICE_CACHE)).toBe(voices);
+    network.mockImplementation(async () => new Response("export {};"));
+    expect(await load()).toBe("ready");
+    expect(network).toHaveBeenCalledTimes(2);
+  },
+);
+
+it.each([
+  ["HTML", new SyntaxError("Unexpected token '<'")],
+  ["truncated JavaScript", new SyntaxError("Unexpected end of input")],
+  [
+    "failed module request",
+    new TypeError("Failed to fetch dynamically imported module"),
+  ],
+])(
+  "keeps model caches when the native runtime import receives %s",
+  async (_name, failure) => {
+    const model = await storage.open(MODEL_CACHE);
+    model.entries.set(asset("config.json"), new Response("{}"));
+    model.entries.set(
+      asset("onnx/model_quantized.onnx"),
+      new Response("model"),
+    );
+    model.entries.set(asset("voices/af_heart.bin"), new Response("voice"));
+    const voices = await storage.open(VOICE_CACHE);
+    loadRuntimeModule.mockRejectedValueOnce(failure);
+    expect(await load()).toBe("error");
+    expect(loadRuntimeModule).toHaveBeenCalledWith(mjsUrl);
+    expect(fromPretrained).not.toHaveBeenCalled();
+    expect(storage.stores.get(MODEL_CACHE)).toBe(model);
+    expect(storage.stores.get(VOICE_CACHE)).toBe(voices);
+    expect(await load()).toBe("ready");
+    expect(network).not.toHaveBeenCalled();
+  },
+);
