@@ -282,3 +282,31 @@ it('reports a missing device voice only after local speech also fails', async ()
   await flush(); expect(error).toHaveBeenCalledOnce(); expect(error).toHaveBeenCalledWith('No on-device voice is ready.');
   expect(output.play).not.toHaveBeenCalled();
 });
+
+
+it('announces pending local speech without claiming it started or speaking twice', async () => {
+  vi.useFakeTimers();
+  try {
+    let finish: ((value: typeof audio) => void) | undefined;
+    const { engine, output } = fixture(() => new Promise(resolve => { finish = resolve; }));
+    await engine.loadModel();
+    vi.mocked(output.system).mockImplementation((_text, options) => options.onError?.('No on-device voice is ready.'));
+    vi.mocked(output.play).mockImplementation(async (_audio, options) => { options.onStart?.(); options.onEnd?.(); });
+    const pending = vi.fn(), start = vi.fn(), end = vi.fn(), error = vi.fn();
+    engine.speak('Please help me with my coat', { onPendingLocal: pending, onStart: start, onEnd: end, onError: error });
+    expect(pending).toHaveBeenCalledOnce(); expect(start).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(20000); finish?.(audio); await flush();
+    expect(output.system).toHaveBeenCalledOnce(); expect(output.play).toHaveBeenCalledOnce();
+    expect(start).toHaveBeenCalledOnce(); expect(end).toHaveBeenCalledOnce(); expect(error).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(65000); expect(output.play).toHaveBeenCalledOnce();
+    engine.dispose();
+  } finally { vi.useRealTimers(); }
+});
+
+it('does not announce pending local speech when the device already spoke', async () => {
+  const { engine, output } = fixture(); await engine.loadModel();
+  const pending = vi.fn();
+  engine.speak('Help', { onPendingLocal: pending }); await flush();
+  expect(pending).not.toHaveBeenCalled(); expect(output.system).toHaveBeenCalledOnce();
+  expect(output.play).not.toHaveBeenCalled(); engine.dispose();
+});

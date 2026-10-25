@@ -11,6 +11,8 @@ export type ModelStatus =
 export type SpeakOptions = {
   rate?: number;
   systemVoiceURI?: string;
+  // The device voice failed, but queued local audio can still speak this tap.
+  onPendingLocal?: () => void;
   onStart?: () => void;
   onEnd?: () => void;
   onError?: (detail: string) => void;
@@ -140,6 +142,7 @@ export class SpeechEngine {
     const guarded: SpeakOptions = {
       ...options,
       rate: Math.max(0.5, Math.min(1.5, Number.isFinite(options.rate) ? options.rate ?? 1 : 1)),
+      onPendingLocal: () => { if (current()) options.onPendingLocal?.(); },
       onStart: () => { if (current()) options.onStart?.(); },
       onEnd: () => { if (current()) options.onEnd?.(); },
       onError: detail => { if (current()) options.onError?.(detail); },
@@ -170,7 +173,7 @@ export class SpeechEngine {
         fallbackSpoken = true;
         // Also invalidate audio awaiting permission/resume, before device speech.
         this.output.cancel();
-        this.output.system(text, { ...guarded, onError: detail => { if (awaitingLocal) deviceError = detail; else guarded.onError?.(detail); } });
+        this.output.system(text, { ...guarded, onError: detail => { if (awaitingLocal) { deviceError = detail; guarded.onPendingLocal?.(); } else guarded.onError?.(detail); } });
       }
     };
     const fail = () => {
