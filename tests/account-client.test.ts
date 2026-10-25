@@ -456,6 +456,52 @@ describe("same-origin account client contract", () => {
     expect(calls).toHaveLength(4);
   });
 
+  it("keeps the refreshed session after a second logout 403 and allows a manual retry", async () => {
+    const refreshedSession = {
+      ...sessionResponse,
+      account: { username: "refreshed-teacher" },
+      csrfToken: "rotated-csrf-test-only",
+    };
+    const { client, calls } = fixture(
+      json(sessionResponse),
+      json({}, 403),
+      json(refreshedSession),
+      json({}, 403),
+      json({ ok: true }),
+    );
+    await client.login("caregiver-test", "test-password");
+    await expect(client.logout()).rejects.toMatchObject({ status: 403 });
+    expect(client.currentSession()).toEqual(refreshedSession);
+    expect(calls).toHaveLength(4);
+    await expect(client.logout()).resolves.toBeUndefined();
+    expect(client.currentSession()).toBeNull();
+    expect(calls).toHaveLength(5);
+    expect(calls[4].options?.headers).toMatchObject({
+      "X-CSRF-Token": refreshedSession.csrfToken,
+    });
+  });
+
+  it("does not restore an old identity after the logout retry returns 401", async () => {
+    const refreshedSession = {
+      ...sessionResponse,
+      account: { username: "refreshed-teacher" },
+      csrfToken: "rotated-csrf-test-only",
+    };
+    const { client, calls } = fixture(
+      json(sessionResponse),
+      json({}, 403),
+      json(refreshedSession),
+      json({}, 401),
+    );
+    await client.login("caregiver-test", "test-password");
+    await expect(client.logout()).rejects.toMatchObject({ status: 401 });
+    expect(client.currentSession()).toBeNull();
+    expect(calls).toHaveLength(4);
+    await expect(client.logout()).rejects.toMatchObject({ status: 401 });
+    expect(client.currentSession()).toBeNull();
+    expect(calls).toHaveLength(4);
+  });
+
   it("reports unavailable storage without account fallback or successful sync", async () => {
     const { client, calls } = fixture(json({}, 503));
     await expect(

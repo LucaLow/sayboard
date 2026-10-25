@@ -295,7 +295,9 @@ function render() {
   const navigation = el("nav", "teacher-actions");
   navigation.setAttribute("aria-label", "Teacher navigation");
   navigation.append(link("Open communication board", "/"));
-  if (signedIn)
+  // Clearing a rejected private view must not remove the only way to end a
+  // server session that survived a failed logout.
+  if (signedIn || accountClient.currentSession())
     navigation.append(
       el(
         "span",
