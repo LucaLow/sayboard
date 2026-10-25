@@ -499,7 +499,11 @@ try {
       `${arrival} restores the saved voice`,
     );
     assert.equal(
-      await voiceSelect.locator('option[value="remote"]').isDisabled(),
+      // isDisabled() follows the enclosing label to its enabled select; check
+      // the option itself, which must not offer a network-backed voice.
+      await voiceSelect
+        .locator('option[value="remote"]')
+        .evaluate((option) => option.disabled),
       true,
     );
     await voiceSelect.selectOption("late-other");
