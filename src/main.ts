@@ -720,7 +720,9 @@ function render() {
           if (tile.kind === "category") {
             categoryTap = {
               boardId: tile.subBoardId,
-              time: event.timeStamp,
+              // A keyboard/switch open is not a first tap. It also clears any
+              // guard left by a recent pointer open of this same category.
+              time: event.detail > 0 ? event.timeStamp : -Infinity,
               area: b.getBoundingClientRect(),
             };
             openCategory(tile.subBoardId);

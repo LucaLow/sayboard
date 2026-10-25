@@ -235,6 +235,66 @@ try {
   await page.waitForTimeout(500);
   await tap();
   assert.deepEqual(await page.evaluate(() => window.__spoken), ["Water"]);
+  // Keyboard and switch opens are not the first half of a double tap. The
+  // first real pointer selection must work immediately, even after reopening
+  // a category that was just opened with a pointer.
+  for (const activation of ["Enter", "Space", "switch"]) {
+    await page
+      .getByRole("button", { name: "Back / Home", exact: true })
+      .click();
+    const category = page.getByRole("button", {
+      name: "Open Drink category",
+      exact: true,
+    });
+    await category.click();
+    await page
+      .getByRole("button", { name: "Back / Home", exact: true })
+      .click();
+    await category.evaluate((node) => {
+      window.__spoken = [];
+      node.addEventListener(
+        "click",
+        (event) => {
+          window.__categoryOpen = {
+            time: event.timeStamp,
+            detail: event.detail,
+          };
+        },
+        { once: true },
+      );
+    });
+    if (activation === "switch")
+      await category.evaluate((node) => node.click());
+    else await category.press(activation);
+    await page
+      .getByRole("button", { name: "Say Water", exact: true })
+      .evaluate((node) => {
+        node.addEventListener(
+          "click",
+          (event) => {
+            window.__wordTap = { time: event.timeStamp, detail: event.detail };
+          },
+          { capture: true, once: true },
+        );
+      });
+    await tap();
+    const events = await page.evaluate(() => ({
+      open: window.__categoryOpen,
+      tap: window.__wordTap,
+      spoken: window.__spoken,
+    }));
+    assert.equal(events.open.detail, 0, `${activation} is a non-pointer open`);
+    assert.deepEqual(
+      events.spoken,
+      ["Water"],
+      `${activation} allows the next pointer tap`,
+    );
+    assert.ok(events.tap.detail > 0, "The selection is pointer-originated");
+    assert.ok(
+      events.tap.time - events.open.time < 400,
+      "The pointer tap is inside the guard window",
+    );
+  }
   await page.close();
   // Below a short category, Type and Speak can move under the finger instead.
   const typed = await browser.newPage({
