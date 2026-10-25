@@ -1,8 +1,9 @@
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
+import { connect } from "node:net";
 import { SqliteStore } from "../store.ts";
 import { createApi, SESSION_SECONDS } from "../api.ts";
 import { localConfig } from "../config.ts";
@@ -617,6 +618,8 @@ describe("account boards and real persistence", () => {
       );
       expect(response.status).toBe(200);
       expect(response.headers.get("set-cookie")).toContain("HttpOnly");
+      // Longer than Caddy's 2-minute idle upstream keep-alive.
+      expect(response.headers.get("keep-alive")).toBe("timeout=130");
       const session = await response.json();
       const headers = {
         origin: config.origin,
@@ -654,5 +657,32 @@ describe("account boards and real persistence", () => {
         server.closeAllConnections();
       });
     }
+  });
+  it("closes kept-alive connections after in-flight responses at shutdown", async () => {
+    const pending: ((response: Response) => void)[] = [];
+    const server = localServer(
+      () => new Promise<Response>((resolve) => pending.push(resolve)),
+    );
+    server.listen(0, peer);
+    await once(server, "listening");
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("Missing server address");
+    const socket = connect(address.port, peer);
+    let received = "";
+    socket.setEncoding("utf8").on("data", (chunk) => (received += chunk));
+    socket.write(`GET / HTTP/1.1\r\nHost: ${peer}\r\n\r\n`);
+    await vi.waitFor(() => expect(pending).toHaveLength(1));
+    const closed = Promise.all([once(socket, "close"), once(server, "close")]);
+    // Same sequence as the production server's SIGTERM handler.
+    server.close();
+    server.closeIdleConnections();
+    const responded = Date.now();
+    pending[0](new Response("ok"));
+    await closed;
+    expect(Date.now() - responded).toBeLessThan(2_000);
+    // The complete chunked response arrives before the connection closes.
+    expect(received).toMatch(/^HTTP\/1\.1 200 OK\r\n/);
+    expect(received).toMatch(/\r\n\r\n2\r\nok\r\n0\r\n\r\n$/);
   });
 });

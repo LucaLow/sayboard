@@ -1,18 +1,20 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 export default defineConfig({
   resolve: {
     alias: {
-      phonemizer: new URL("./src/speech/phonemizer.ts", import.meta.url)
-        .pathname,
+      phonemizer: fileURLToPath(
+        new URL("./src/speech/phonemizer.ts", import.meta.url),
+      ),
     },
   },
   worker: { format: "es" },
   build: {
     rollupOptions: {
       input: {
-        board: new URL("./index.html", import.meta.url).pathname,
-        teacher: new URL("./teacher.html", import.meta.url).pathname,
-        move: new URL("./move-board.html", import.meta.url).pathname,
+        board: fileURLToPath(new URL("./index.html", import.meta.url)),
+        teacher: fileURLToPath(new URL("./teacher.html", import.meta.url)),
+        move: fileURLToPath(new URL("./move-board.html", import.meta.url)),
       },
       output: {
         manualChunks(id) {

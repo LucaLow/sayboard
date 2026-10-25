@@ -253,9 +253,37 @@ try {
     await page
       .getByRole("button", { name: "Create category", exact: true })
       .click();
+    assert.equal(
+      await page.evaluate(() => {
+        const event = new Event("beforeunload", { cancelable: true });
+        dispatchEvent(event);
+        return event.defaultPrevented;
+      }),
+      true,
+      "unsaved arrangement warns before leaving the page",
+    );
     await page
       .getByRole("button", { name: "Cancel arrangement", exact: true })
       .click();
+    assert.equal(
+      await page
+        .getByRole("dialog", { name: "Confirm board change", exact: true })
+        .count(),
+      1,
+      "unsaved arrangement asks before discarding",
+    );
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await page
+      .getByRole("button", {
+        name: "Open Cancelled fixture category",
+        exact: true,
+      })
+      .waitFor();
+    await page
+      .getByRole("button", { name: "Cancel arrangement", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Confirm", exact: true }).click();
+    await page.getByRole("button", { name: "Say Yes", exact: true }).waitFor();
     assert.deepEqual(await stored(), saved);
     assert.equal(
       await page
@@ -265,6 +293,15 @@ try {
         })
         .count(),
       0,
+    );
+    await openArrange(page);
+    await page
+      .getByRole("button", { name: "Cancel arrangement", exact: true })
+      .click();
+    assert.equal(
+      await page.locator("dialog[open]").count(),
+      0,
+      "clean arrangement cancels without confirmation",
     );
     assert.deepEqual(errors, []);
     results.push({ viewport: viewport.width, outcome: "pass" });
@@ -450,6 +487,12 @@ try {
   await failurePage
     .getByRole("button", { name: "Cancel arrangement", exact: true })
     .click();
+  await failurePage
+    .getByRole("button", { name: "Confirm", exact: true })
+    .click();
+  await failurePage
+    .getByRole("button", { name: "Say Yes", exact: true })
+    .waitFor();
   await failurePage.reload();
   await failurePage.evaluate(() => {
     localStorage.setItem("sayboard-v2", "fixture invalid JSON");

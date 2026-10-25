@@ -4,6 +4,11 @@ import { createApi, requestRejection } from "./api.js";
 import { tokenHash } from "./password.js";
 import type { Store } from "./store-contract.js";
 import { smtpMailer } from "./mail.js";
+import {
+  createGoogleHandler,
+  googleConfig,
+  isGoogleCallback,
+} from "./google.js";
 
 const unavailable = (error: string) =>
   new Response(JSON.stringify({ error }), {
@@ -20,7 +25,12 @@ export function createHostedHandler(
   getStore: () => Promise<Store>,
   now = Date.now,
 ) {
-  let pending: Promise<Awaited<ReturnType<typeof createApi>>> | undefined;
+  let pending:
+    | Promise<{
+        api: Awaited<ReturnType<typeof createApi>>;
+        google: ReturnType<typeof createGoogleHandler>;
+      }>
+    | undefined;
   let initializedOrigin: string | undefined;
   return async (request: Request, clientIp: string): Promise<Response> => {
     let config;
@@ -33,18 +43,25 @@ export function createHostedHandler(
     const ip = clientIp;
     if (!ip || !isIP(ip)) return unavailable("trusted_peer_unavailable");
     const peer = tokenHash(`sayboard-peer:${ip.toLowerCase()}`);
-    const rejection = requestRejection(request, peer, config);
+    const rejection = requestRejection(request, peer, config, {
+      allowCrossSiteNavigation: isGoogleCallback(request),
+    });
     if (rejection) return rejection;
     if (pending && initializedOrigin !== config.origin)
       return unavailable("auth_unconfigured");
     initializedOrigin = config.origin;
     pending ??= Promise.resolve()
       .then(getStore)
-      .then((store) => createApi(store, config, now, smtpMailer(env)));
+      .then(async (store) => ({
+        api: await createApi(store, config, now, smtpMailer(env)),
+        google: createGoogleHandler(store, config, googleConfig(env), now),
+      }));
     const attempt = pending;
     try {
-      const api = await attempt;
-      return await api(request, peer);
+      const handlers = await attempt;
+      return new URL(request.url).pathname.startsWith("/api/auth/google/")
+        ? await handlers.google(request, peer)
+        : await handlers.api(request, peer);
     } catch {
       if (pending === attempt) pending = undefined;
       return unavailable("storage_unavailable");
